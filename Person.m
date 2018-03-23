@@ -10,17 +10,7 @@
 
 @implementation Person
 
-- (instancetype)init
-{
-    self = [super init];
-    
-    
-    if (self) {
-        self.name = @"Person类中的重写初始化";
-    }
-    
-    return self;
-}
+
 
 
 @end
@@ -28,13 +18,10 @@
 
 @implementation Dog 
 
-- (void)setStringWithJSONObject:(NSString *)string
-{
-    
-}
+@synthesize pk = _pk;
 
-+ (JSONKeyMapper *)keyMapper
-{
-    return [[JSONKeyMapper alloc] initWithModelToJSONDictionary:@{}];
-}
+@end
+
+
+@implementation Cat
 @end

@@ -11,15 +11,16 @@
 @protocol Printable
 
 @optional
-@property (nonatomic, copy) NSString *name;
-
-@optional
-- (NSString *)desc;
+- (void)lll;
 
 @end
 
 @interface TempClass : NSObject<Printable>
 
+//@property (nonatomic, assign) NSInteger age;
+@property (nonatomic, copy) NSString *keyword;
 
+- (void)function1;
++ (void)function2;
 
 @end

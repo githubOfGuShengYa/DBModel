@@ -66,7 +66,7 @@
     }
     // 拼接数据库的文件名到该目录上形成数据库文件的完整路径
     NSString *dbpath = [docsdir stringByAppendingPathComponent:@"duia.sqlite"];
-    
+    NSLog(@"数据库文件路径:[%@]", dbpath);
     return dbpath;
 }
 

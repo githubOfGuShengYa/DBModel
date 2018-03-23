@@ -10,30 +10,24 @@
 #import <objc/runtime.h>
 #import "DBManager.h"
 #import "DBDefine.h"
+#import "PropertyDescription.h"
 
 /// 整型
 NSString *const SYPropertyType_Integer = @"NSInteger";
 /// 浮点型
 NSString *const SYPropertyType_CGFloat = @"CGFloat";
-///// 字符型
-//NSString *const SYPropertyType_NSString = @"NSString";
-///// 二进制型
-//NSString *const SYPropertyType_Binary = @"";
-///// 空型
-//NSString *const SYPropertyType_NULL = @"";
 
 
 #pragma mark- <-----------  关联对象名称  ----------->
-/// 继承树中所有属性与属性名组成的字典关联关键字 - 继承树上属性信息作为value,属性名作为key关联起来的该类属性信息列表Dic
-static const char *AssociatedKey_PropertyDic;
+/// 所有属性与属性名组成的字典关联关键字 - 属性信息作为value,属性名作为key关联起来的该类属性信息列表Dic
+static const char *AssociatedKey_AllPropertyList; // 收集所有属性
+/// 需保存入数据库的字段
+static const char *AssociatedKey_StorePropertyList; // 收集除了只读和忽略的属性
 /// 字段关键字关联映射表Dic
 static const char *AssociatedKey_MapperDic;
 
 
 @interface DBModel()
-
-/// 主键
-@property (nonatomic, assign) int pk;
 
 @end
 
@@ -41,34 +35,44 @@ static const char *AssociatedKey_MapperDic;
 
 
 #pragma mark- <-----------  override method  ----------->
-+ (void)initialize
-{
-    NSLog(@"调用initialize方法的类名:%@", NSStringFromClass([self class]));
-    if (self != [DBModel class])
-    {
-        NSLog(@"不是DBModel类");
-        
-        // 配置继承树上属性信息列表与字段映射表
-        [self config];
-        
-        // 根据属性列表创建或更新数据库表
-        [self createTable:nil updateTable:nil];
-    }
-    else
-    {
-    }
-}
-
-- (instancetype)init
-{
-    self = [super init];
-    if (self) {
-//
+//+ (void)initialize
+//{
+//    NSLog(@"调用initialize方法的类名:%@", NSStringFromClass([self class]));
+//    if (self != [DBModel class])
+//    {
+//        NSLog(@"不是DBModel类");
+//        
+//        // 配置继承树上属性信息列表与字段映射表
+//        [self config];
+//        
 //        // 根据属性列表创建或更新数据库表
 //        [self createTable:nil updateTable:nil];
-    }
-    
-    return self;
+//    }
+//    else
+//    {
+//    }
+//}
+//
+//- (instancetype)init
+//{
+//    self = [super init];
+//    if (self) {
+////
+////        // 根据属性列表创建或更新数据库表
+////        [self createTable:nil updateTable:nil];
+//    }
+//    
+//    return self;
+//}
+
+/// 配置属性信息列表;配置数据库表
++ (void)configPropertyAndTable
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [self config];
+        [self createTable:nil updateTable:nil];
+    });
 }
 
 /// 创建并更新表 -- 字段只增不减
@@ -80,17 +84,24 @@ static const char *AssociatedKey_MapperDic;
     [manager.databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
         // 获取当前类的名称
         NSString *tableName = NSStringFromClass(self);
-        // 创建表语句
-        NSString *sql = [NSString stringWithFormat:@"CREATE TABLE IF NOT EXISTS %@(%@);", tableName, [[self class] propertyNameAndTypeString]];
-        // 执行创建表语句并判断是否创建成功
-        BOOL isSuccess = [db executeUpdate:sql];
-        if (!isSuccess) { // 如果没有创建成功
-            // 事务回滚, 并结束执行代码
-            *rollback = YES;
-            if (createBlock) {
-                createBlock(NO);
+        
+        BOOL isExist = [db tableExists:tableName];
+        if (!isExist) {
+            // 创建表语句
+            NSString *sql = [NSString stringWithFormat:@"CREATE TABLE IF NOT EXISTS %@(%@);", tableName, [[self class] propertyNameAndTypeString]];
+            // 执行创建表语句并判断是否创建成功
+            BOOL isSuccess = [db executeUpdate:sql];
+            if (!isSuccess) { // 如果没有创建成功
+                // 事务回滚, 并结束执行代码
+                *rollback = YES;
+                if (createBlock) {
+                    createBlock(NO);
+                }
+                return;
             }
-            return;
+            NSLog(@"创建数据库表(%@)成功", sql);
+        }else {
+            NSLog(@"数据库表(%@)已存在", tableName);
         }
         
         
@@ -107,7 +118,7 @@ static const char *AssociatedKey_MapperDic;
         }
         
         // 获取当前版本该类的所有属性列表
-        NSDictionary *dic = objc_getAssociatedObject(self, &AssociatedKey_PropertyDic);
+        NSDictionary *dic = objc_getAssociatedObject(self, &AssociatedKey_AllPropertyList);
         
         // 获取其属性名列表
         NSArray *propertyNameList = dic.allKeys;
@@ -120,6 +131,8 @@ static const char *AssociatedKey_MapperDic;
         for (NSString *columnName in unsavedProperties) {
             // 取得该列名对应的数据类型
             PropertyDescription *p = dic[columnName];
+            
+            if ([p.name isEqualToString:@"pk"]) continue;
             // 采用SQL语句添加新的字段到当前数据库表中
             NSString *sqlString = [NSString stringWithFormat:@"ALTER TABLE %@ ADD COLUMN %@ %@;", tableName, columnName, p.sqlTypeName];
             // 执行SQL语句添加新的字段
@@ -150,149 +163,144 @@ static const char *AssociatedKey_MapperDic;
     }];
 }
 
-/// 检查属性列表 - 收集从该类起的继承树上所有属性信息
+/// 检查属性列表
 + (void)inspectProperties
 {
-    // 收集属性
-    NSMutableDictionary *dic = [NSMutableDictionary dictionary];
-    // 类型
+    NSMutableDictionary *dic = [NSMutableDictionary dictionary]; // 收集所有属性
+    NSMutableDictionary *storeDic = [NSMutableDictionary dictionary]; // 收集可保存到数据库中的属性
+
     Class class = self;
     // 扫描器
     NSScanner *scanner = nil;
     // 属性类型
     NSString *propertyType = nil;
     
-    // 遍历子类及其父类直到父类是本类为止
-    while (class != [DBModel superclass]) {
+    unsigned int count;
+    objc_property_t *propertyList = class_copyPropertyList(class, &count);
+
+    for (unsigned int i = 0; i < count; i++) {
         
-        // 属性列表
-        unsigned int count;
-        objc_property_t *propertyList = class_copyPropertyList(class, &count);
+        PropertyDescription *p = [[PropertyDescription alloc] init];
+        objc_property_t  property = propertyList[i];
+        NSString *name = [NSString stringWithCString:property_getName(property) encoding:NSUTF8StringEncoding];
+        // 属性名称
+        p.name = name;
         
-        // 遍历属性列表
-        for (unsigned int i = 0; i < count; i++) {
-            // 初始化属性描述对象
-            PropertyDescription *p = [[PropertyDescription alloc] init];
-            
-            // 属性
-            objc_property_t  property = propertyList[i];
-            // 属性名
-            NSString *name = [NSString stringWithCString:property_getName(property) encoding:NSUTF8StringEncoding];
-            p.name = name;
-            
-            // 属性的属性
-            NSString *attributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
-            // 以,分割字符串
-            NSArray *items = [attributes componentsSeparatedByString:@","];
-            
-            // 如果是只读属性忽略
-            if ([items containsObject:@"R"]) {
-                continue;
-            }
-            
-            // 初始化扫描器
-            scanner = [NSScanner scannerWithString:attributes];
-            //FIXME: 基础数据类型以T+字母表示类型、类对象以T@"类型"表示类型、block以T+@?表示类型、结构体以T@{结构体名=}表示类型
-            
-            // 扫描从T开始
-            [scanner scanUpToString:@"T" intoString:nil]; // 索引指向T的下一位
-            [scanner scanString:@"T" intoString:nil]; // 只是为了让索引指向T的下一位
-            
-            // 判断该属性的属性字符串类型
-            if ([scanner scanString:@"@\"" intoString:&propertyType]) // 类对象
-            {
-                // 截取类型字符串 -- 1. T@"NSString"样式  2. T@"NSString<协议名>"样式
-                [scanner scanUpToCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&propertyType];
-                // 赋值属性类型 -- 如果是自定义的类型, 则此处取不到类型
-                p.type = NSClassFromString(propertyType);
-                
-                // 属于字符串
-                if ([p.type isSubclassOfClass:[NSString class]]) {
-                    p.sqlTypeName = @"TEXT";
-                }else {
-                    p.sqlTypeName = @"BLOB";
-//                    p.sqlTypeName = @"TEXT";
-                }
-                p.typeName = propertyType;
-                // 是否可变
-                p.isMutable = ([propertyType rangeOfString:@"Mutable"].location != NSNotFound);
-                
-                // 移动扫描索引点配置 1. 是否可选值  2. 是否可忽略  3. 协议名
-                while ([scanner scanString:@"<" intoString:nil])
-                {
-                    NSString *protocolName = nil;
-                    // 截取协议名 -- 协议可能不止一个
-                    [scanner scanUpToString:@">" intoString:&protocolName];
-                    // 判断该协议名属于什么类型 1. 可选值  2. 可忽略  3. 协议
-                    if ([protocolName isEqualToString:@"Optional"]) // 可选值
-                    {
-                        p.isOptional = YES;
-                    }
-                    else if ([protocolName isEqualToString:@"Ignore"]) // 可忽略
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        p.protocolName = protocolName;
-                    }
-                    
-                    // 以>字符作为协议名结束点
-                    [scanner scanString:@">" intoString:nil];
-                }
-            }
-            else if ([scanner scanString:@"@?" intoString:nil]) // Block
-            {
-                propertyType = @"Block";
-                continue;
-            }
-            else if ([scanner scanString:@"{" intoString:&propertyType]) // 结构体
-            {
-                // 截取结构体名 -- T{MyStruct=}格式, 从{开始到=号结束, 其中=号可能是任意数字或字母(不区分大小写)
-                [scanner scanUpToCharactersFromSet:[NSCharacterSet alphanumericCharacterSet] intoString:&propertyType];
-                p.structName = propertyType;
-                
-                continue;
-            }
-            else // 基础数据类型(T+字母)
-            {
-                // 截取表示类型的字母
-                [scanner scanUpToString:@"," intoString:&propertyType];
-                // 根据该字母转化为正常的基础数据类型
-                [self setupPropertyTypeTo:p WithType:propertyType];
-            }
-            
-            // 是否忽略
-            if ([self propertyIsIgnored:p.name]) {
-                continue;
-            }
-            
-            if ([self.class propertyIsOptional:p.name]) {
-                p.isOptional = YES;
-            }
-            
-//            // 当属性是block时, 自动忽略该属性
-//            if ([propertyType isEqualToString:@"Block"]) {
-//                p = nil;
-//                continue;
-//            }
-            
-            // 如果p存在且字典中未保存以p.name为key的值, 则保存该对象
-            if (p && ![dic objectForKey:p.name]) {
-                [dic setValue:p forKey:p.name];
-            }
-            
-            NSLog(@"属性名: %@, 属性类型: %@-%@", p.name, p.typeName, attributes);
+        NSString *attributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
+        NSArray *items = [attributes componentsSeparatedByString:@","];
+        
+        // 只读
+        if ([items containsObject:@"R"]) {
+            p.isReadOnly = YES;
         }
         
-        // 释放属性列表
-        free(propertyList);
-        // 让临时变量指向子类的父类 -- 直到最后指向本类自己
-        class = [class superclass];
+        // 初始化扫描器
+        scanner = [NSScanner scannerWithString:attributes];
+        //FIXME: 基础数据类型以T+字母表示类型、类对象以T@"类型"表示类型、block以T+@?表示类型、结构体以T@{结构体名=}表示类型
+        
+        // 扫描从T开始
+        [scanner scanUpToString:@"T" intoString:nil]; // 索引指向T的下一位
+        [scanner scanString:@"T" intoString:nil]; // 只是为了让索引指向T的下一位
+        
+        // 判断该属性的属性字符串类型
+        if ([scanner scanString:@"@\"" intoString:&propertyType]) // OC对象
+        {
+            // 截取类型字符串 -- 1. T@"NSString"样式  2. T@"NSString<协议名>"样式
+            [scanner scanUpToCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&propertyType];
+            // 赋值属性类型 -- 如果是自定义的类型, 则此处取不到类型
+            p.type = NSClassFromString(propertyType);
+            p.typeName = propertyType;
+            // 是否可变
+            p.isMutable = ([propertyType rangeOfString:@"Mutable"].location != NSNotFound);
+            
+            // 属于字符串
+            if ([p.type isSubclassOfClass:[NSString class]]) // 字符串系可直接保存为TEXT格式
+            {
+                p.sqlTypeName = @"TEXT";
+            }
+            else // 非字符串系保存为二进制格式
+            {
+                p.sqlTypeName = @"BLOB";
+            }
+            
+            // 遵循的协议
+            NSString *protocolName = nil;
+            while ([scanner scanString:@"<" intoString:nil])
+            {
+                // 截取协议名 -- 协议可能不止一个
+                [scanner scanUpToString:@">" intoString:&protocolName];
+                // 判断该协议名属于什么类型 1. 可选值  2. 可忽略  3. 协议
+                if ([protocolName isEqualToString:@"Ignore"]) // 不用保存到数据库
+                {
+                    p.isIgnore = YES;
+                }
+                else
+                {
+                    if (p.protocolNameList != nil) {
+                        [p.protocolNameList addObject:protocolName];
+                    }else {
+                        p.protocolNameList = [NSMutableArray arrayWithObject:protocolName];
+                    }
+                }
+                
+                // 以>字符作为协议名结束点, 使用scanString让扫描索引移动到>位置
+                [scanner scanString:@">" intoString:nil];
+            }
+            
+            // OC对象分类
+            p.classify = STORE_PROPERTY_TYPE_OBJECT;
+        }
+        else if ([scanner scanString:@"@?" intoString:nil]) // Block
+        {
+            propertyType = @"Block";
+            p.typeName = propertyType;
+            // Block分类
+            p.classify = STORE_PROPERTY_TYPE_BLOCK;
+            p.isIgnore = YES; // Block自动划入忽略项
+        }
+        else if ([scanner scanString:@"{" intoString:&propertyType]) // 结构体
+        {
+            // 截取结构体名 -- T{MyStruct=}格式, 从{开始到=号结束, 其中=号可能是任意数字或字母(不区分大小写)
+            [scanner scanUpToCharactersFromSet:[NSCharacterSet alphanumericCharacterSet] intoString:&propertyType];
+            p.typeName = propertyType;
+            
+            // 结构体分类
+            p.classify = STORE_PROPERTY_TYPE_STUCT;
+            p.isIgnore = YES; // 结构体自动划入忽略项
+        }
+        else // 基础数据类型(T+字母)
+        {
+            // 截取表示类型的字母
+            [scanner scanUpToString:@"," intoString:&propertyType];
+            // 根据该字母转化为正常的基础数据类型
+            [self setupPropertyTypeTo:p WithType:propertyType];
+            
+            // 基础数据分类
+            p.classify = STORE_PROPERTY_TYPE_BASEDATA;
+        }
+        
+        // 是否忽略
+        if ([self propertyIsIgnored:p.name]) {
+            p.isIgnore = YES;
+        }
+        
+        // 如果p存在且字典中未保存以p.name为key的值, 则保存该对象
+        if (p && ![dic objectForKey:p.name]) {
+            [dic setValue:p forKey:p.name];
+            if (!(p.isIgnore) && ![storeDic objectForKey:p.name]) {
+                [storeDic setValue:p forKey:p.name];
+            }
+        }
+        
+        NSLog(@"属性名: %@, 属性类型: %@-%@", p.name, p.typeName, attributes);
     }
     
+    // 释放属性列表
+    free(propertyList);
+    
     // 遍历完了继承树保存所有属性信息到静态属性中
-    objc_setAssociatedObject(self.class, &AssociatedKey_PropertyDic, [dic copy], OBJC_ASSOCIATION_RETAIN); // 原子性
+    objc_setAssociatedObject(self.class, &AssociatedKey_AllPropertyList, [dic copy], OBJC_ASSOCIATION_RETAIN); // 原子性
+    objc_setAssociatedObject(self.class, &AssociatedKey_StorePropertyList, [storeDic copy], OBJC_ASSOCIATION_RETAIN); // 原子性
 }
 
 
@@ -300,7 +308,7 @@ static const char *AssociatedKey_MapperDic;
 {
     // 主键
     if ([p.name isEqualToString:NSStringFromSelector(@selector(pk))]) {
-        p.sqlTypeName = @"INTEGER PRIMARY KEY";
+        p.sqlTypeName = @"INTEGER PRIMARY KEY AUTOINCREMENT";
         p.typeName = SYPropertyType_Integer;
         return;
     }
@@ -351,7 +359,7 @@ static const char *AssociatedKey_MapperDic;
 + (void)config
 {
     // 如果静态变量中没有值, 检查属性信息进行配置
-    if (!objc_getAssociatedObject(self, &AssociatedKey_PropertyDic)) {
+    if (!objc_getAssociatedObject(self, &AssociatedKey_AllPropertyList)) {
         [self inspectProperties];
     } // 如果静态变量有值说明已经检查完类的属性可以跳过检查属性阶段
     
@@ -367,12 +375,6 @@ static const char *AssociatedKey_MapperDic;
 + (NSDictionary *)keyMapper
 {
     return nil;
-}
-
-/// 整体可选或指定属性名设置是否可选
-+ (BOOL)propertyIsOptional:(NSString *)propertyName
-{
-    return NO;
 }
 
 /// 整体忽略或指定属性名设置是否忽略
@@ -502,8 +504,8 @@ static const char *AssociatedKey_MapperDic;
 {
     NSMutableString *str = [NSMutableString string];
     //
-    if (objc_getAssociatedObject(self, &AssociatedKey_PropertyDic)) {
-        NSDictionary *dic = objc_getAssociatedObject(self, &AssociatedKey_PropertyDic);
+    if (objc_getAssociatedObject(self, &AssociatedKey_AllPropertyList)) {
+        NSDictionary *dic = objc_getAssociatedObject(self, &AssociatedKey_AllPropertyList);
         [dic.allValues enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
             PropertyDescription *p = obj;
             // 如果该属性不被忽略则表示需要保存到SQL中
@@ -613,15 +615,18 @@ static const char *AssociatedKey_MapperDic;
 //    }];
 //}
 
+// FIXME: 新增
 /// 增
 - (void)add:(void(^)(BOOL isSuccess))callback
 {
+    [self.class configPropertyAndTable];
+    
     NSString *tableName = NSStringFromClass([self class]);
     NSMutableString *columnNameString = [NSMutableString string];
     NSMutableString *columnValueString = [NSMutableString string];
     NSMutableArray *columnValues = [NSMutableArray array];
     // 取得属性名数组
-    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_PropertyDic);
+    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_AllPropertyList);
     NSArray *propertyNameList = dic.allKeys;
     // 遍历需保存到数据库的属性列表
     for (int i = 0; i < propertyNameList.count; i++) {
@@ -693,7 +698,7 @@ static const char *AssociatedKey_MapperDic;
 #pragma clang diagnostic pop
         BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValues];
         if (isSuccess) {
-            self.pk = [NSNumber numberWithLongLong:db.lastInsertRowId].intValue;
+//            self.pk = [NSNumber numberWithLongLong:db.lastInsertRowId].intValue;
             NSLog(@"插入数据成功");
             if (callback) {
                 callback(YES);
@@ -710,9 +715,12 @@ static const char *AssociatedKey_MapperDic;
     }];
 }
 
+// FIXME: 更改
 /// 改
 - (void)update:(void(^)(BOOL isSuccess))callback
 {
+    [self.class configPropertyAndTable];
+    
     // 判断是否不存在
     id pk = [self valueForKey:@"pk"];
     if (pk <= 0 || pk == nil) {
@@ -724,10 +732,10 @@ static const char *AssociatedKey_MapperDic;
     }
     
     NSString *tableName = NSStringFromClass([self class]);
-    NSMutableString *columnNameString = [NSMutableString string];
-    NSMutableArray *columnValues = [NSMutableArray array];
+    NSMutableString *sql_ColumnName = [NSMutableString string]; // 字段名
+    NSMutableArray *columnValueList = [NSMutableArray array];
     // 取得属性名列表
-    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_PropertyDic);
+    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
     NSArray *propertyNameList = dic.allKeys;
     // 遍历需保存到数据库的属性列表
     for (int i = 0; i < propertyNameList.count; i++) {
@@ -745,16 +753,16 @@ static const char *AssociatedKey_MapperDic;
         id value = [self valueForKey:columnName];
         // 判断该值是否存在
         if (value == nil) {
-            [columnNameString appendFormat:@"%@=null,", columnName];
+            [sql_ColumnName appendFormat:@"%@=null,", p.name];
         }
         else {
-            [columnNameString appendFormat:@"?,"];
+            [sql_ColumnName appendFormat:@"%@=?,", p.name];
             
             // 字符串
             if ([p.type isSubclassOfClass:[NSString class]])
             {
                 // 把值添加的数组中
-                [columnValues addObject:value];
+                [columnValueList addObject:value];
             }
             else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
             {
@@ -762,33 +770,34 @@ static const char *AssociatedKey_MapperDic;
                 NSData *data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
                 if (!error) {
                     NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                    [columnValues addObject:jsonStr];
+                    [columnValueList addObject:jsonStr];
                 }else {
-                    [columnValues addObject:value];
+                    [columnValueList addObject:value];
                 }
             }
             else
             {
                 // 把值添加的数组中
-                [columnValues addObject:value];
+                [columnValueList addObject:value];
             }
         }
     }
     
     // 清除最后一个逗号
-    if (columnNameString.length > 0) {
-        [columnNameString deleteCharactersInRange:NSMakeRange(columnNameString.length - 1, 1)];
+    if (sql_ColumnName.length > 0) {
+        [sql_ColumnName deleteCharactersInRange:NSMakeRange(sql_ColumnName.length - 1, 1)];
     }
     
     // SQL语句
-    NSString *sqlString = [NSString stringWithFormat:@"UPDATE %@ SET %@ WHERE pk = %@;", tableName, columnNameString, [self valueForKey:@"pk"]];
+    NSString *sqlString = [NSString stringWithFormat:@"UPDATE %@ SET %@ WHERE pk = %@;", tableName, sql_ColumnName, [self valueForKey:@"pk"]];
     NSLog(@"数据库表(%@)更新SQL语句:(%@)", tableName, sqlString);
     // 获取管理者单例
     DBManager *manager = [DBManager manager];
     // 使用数据库队列执行保存操作
     [manager.databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
         // 使用数据库事务执行SQL语句
-        BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValues];
+        BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValueList];
+
         if (isSuccess) {
             NSLog(@"更新数据成功");
             if (callback) {
@@ -805,9 +814,12 @@ static const char *AssociatedKey_MapperDic;
     }];
 }
 
+// FIXME: 查询
 /// 查
 + (NSArray *)findByCondition:(NSString *)condition
 {
+    [self.class configPropertyAndTable];
+    
     // 取得数据管理者单例
     DBManager *manager = [DBManager manager];
     
@@ -824,18 +836,20 @@ static const char *AssociatedKey_MapperDic;
         // 结果集
         FMResultSet *resultSet = [db executeQuery:sqlString];
         
-        // 关联属性列表
-        NSDictionary *associatedDic = objc_getAssociatedObject([self class], &AssociatedKey_PropertyDic);
+        // 需保存的属性
+        NSDictionary *associatedDic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
         
         // 当前类需保存的属性名数组
         NSArray *list = associatedDic.allKeys;
         
         // 遍历结果集
         while ([resultSet next]) {
-            DBModel *model = [[[self class] alloc] init];
+            id model = [[[self class] alloc] init];
             // 将FMResultSet转换为NSDictionary
             NSDictionary *dic = [resultSet resultDictionary]; // 数据库中的NULL值会在FMResultSet中自动被转化为字符串@"NULL"
             NSLog(@"%@", dic);
+            
+            
             // 遍历属性列表
             for (int i = 0; i < list.count; i++) {
                 
@@ -856,7 +870,7 @@ static const char *AssociatedKey_MapperDic;
                 // 根据不同类型设置
                 if ([p.name isEqualToString:NSStringFromSelector(@selector(pk))]) // 主键
                 {
-                    int pk = [[dic objectForKey:propertyName] intValue];
+                    int pk = [[dic valueForKey:@"pk"] respondsToSelector:@selector(intValue)] ? [[dic valueForKey:@"pk"] intValue] : 0;
                     [model setValue:[NSNumber numberWithInt:pk] forKey:propertyName];
                 }
                 // int64位类型、int32位类型、int16位类型、int8位类型、int类型、long类型、longlong类型、BOOL类型
@@ -907,9 +921,12 @@ static const char *AssociatedKey_MapperDic;
     return resultArray.copy;
 }
 
+// FIXME: 删除
 /// 删
-+ (void)deleteByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback
++ (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback
 {
+    [self.class configPropertyAndTable];
+    
     // 取得数据库管理者
     DBManager *manager = [DBManager manager];
     
@@ -920,8 +937,8 @@ static const char *AssociatedKey_MapperDic;
     // 删除之前先搜索是否有达到该条件的数据
     NSArray *result = [[self class] findByCondition:condition];
     if (result.count == 0) {
+        NSLog(@"从数据库表(%@)中未找到符合(sql:%@)SQL语句的可删除项", NSStringFromClass([self class]), sqlString);
         if (callback) {
-            NSLog(@"从数据库表(%@)中未找到符合(sql:%@)SQL语句的可删除项", NSStringFromClass([self class]), sqlString);
             callback(NO);
         }
         return;
@@ -932,8 +949,8 @@ static const char *AssociatedKey_MapperDic;
         // 判断操作执行是否成功
         BOOL isSuccess = [db executeUpdate:sqlString];
         if (isSuccess) { // 执行删除操作成功
+            NSLog(@"删除成功");
             if (callback) {
-                NSLog(@"删除成功");
                 callback(YES);
             }
             
@@ -948,25 +965,29 @@ static const char *AssociatedKey_MapperDic;
     }];
 }
 
-/// 单个删除
-- (void)deleteCache:(void(^)(BOOL isSuccess))callback
+// FIXME: 删除
+/// 删除
+- (void)remove:(void(^)(BOOL isSuccess))callback
 {
+    [self.class configPropertyAndTable];
+    
     if (self.pk <= 0) {
         if (callback) {
             NSLog(@"该数据没有保存到数据库中");
             callback(NO); // 新增数据没有保存到数据库中
         }
-
+        
         return;
     }
     
-    [[self class] deleteByCondition:[NSString stringWithFormat:@"where pk = %d;", self.pk] callback:callback];
+    [[self class] removeByCondition:[NSString stringWithFormat:@"where pk = %d;", self.pk] callback:callback];
 }
 
 #pragma mark- <-----------  扩展的数据库操作  ----------->
 /// 整合保存和更新到一个方法中
 - (void)save:(void (^)(BOOL))callback
 {
+//    NSLog(@"%d&&%@", self.pk, self.keyword);
     // 取得主键的值
     id pkValue = [self valueForKey:@"pk"];
     // 如果主键的值小于等于0表示新增的一条数据还未保存到数据库因此没有赋值
@@ -1066,6 +1087,8 @@ static const char *AssociatedKey_MapperDic;
 //    }];
 //}
 
+
+
 /// 批量移除
 + (void)deleteObjects:(NSArray<DBModel *>*)objs successfulHandle:(void(^)(DBModel *successfulModel))successful failedHandle:(void(^)(DBModel *failedModel))failed afterAllSuccess:(void(^)(void))allSuccess
 {
@@ -1149,9 +1172,150 @@ static const char *AssociatedKey_MapperDic;
 
 @end
 
+//
+//
+//static objc_property_attribute_t getAttribute(NSString *str) {
+//
+//    NSScanner *scanner = [NSScanner scannerWithString:str];
+//    NSString *name = nil;
+//    NSString *value = nil;
+//
+//
+//    // 扫描从T开始
+//    [scanner scanUpToString:@"T" intoString:nil]; // 索引指向T的下一位
+//    [scanner scanString:@"T" intoString:nil]; // 只是为了让索引指向T的下一位
+//
+//    // 判断该属性的属性字符串类型
+//    if ([scanner scanString:@"T" intoString:&name]) {
+//        if ([scanner scanString:@"@\"" intoString:&value]) { // Object类型
+//            [scanner scanUpToCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&value];
+//        }else { // 基础数据类型、Block、结构体
+//            value = [str substringFromIndex:1];
+//        }
+//        const char *charValue = [value UTF8String];
+//        objc_property_attribute_t attribute = {"T",charValue};
+//        return attribute;
+//    }
+//    else if ([scanner scanCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"C&W"] intoString:&name]) // 编码类型
+//    {
+//        const char *charName = [name UTF8String];
+//        objc_property_attribute_t attribute = {charName,""};
+//        return attribute;
+//    }
+//    else if ([scanner scanString:@"N" intoString:&name]) // 非/原子性
+//    {
+//        const char *charName = [name UTF8String];
+//        objc_property_attribute_t attribute = {charName,""};
+//        return attribute;
+//    }
+//    else if ([scanner scanString:@"V" intoString:&name]) // 变量名称
+//    {
+//        value = [str substringFromIndex:1];
+//        const char *charValue = [value UTF8String];
+//        objc_property_attribute_t attribute = {"V",charValue};
+//        return attribute;
+//    }
+//
+//    objc_property_attribute_t attribute = {"",""};
+//    return attribute;
+//}
 
-#pragma mark- <-----------  属性描述类  ----------->
 
-@implementation PropertyDescription
+__attribute__((constructor)) static void _append_default_implement_method_to_class1() {
+    unsigned classCount;
+    
+    Class *classes = objc_copyClassList(&classCount);
+    //第一层遍历所有的类
+    for (int i = 0; i < classCount; i ++) {
+        // 被添加类
+        Class class = classes[i];
+        Class metaClass = object_getClass(class);
+        
+        unsigned protocolCount;
+        Protocol * __unsafe_unretained *protocols = class_copyProtocolList(class, &protocolCount);
+        //第二层遍历类中所有的协议
+        for (int j = 0; j < protocolCount; j ++) {
+            Protocol *protocol = protocols[j];
+            NSString *protocolName = [NSString stringWithFormat:@"%s", protocol_getName(protocol)];
+            // 协议名不正确或者类名是临时类则跳过
+            if (![protocolName isEqualToString:@"DBModelProtocol"] || [NSStringFromClass(class) isEqualToString:@"DBModel"]) continue;
+            
+            
+            // 类的实例方法转移
+            unsigned methodCount;
+            // 待转移方法的类
+            Class tempClass = objc_getClass(NSStringFromClass([DBModel class]).UTF8String);
+            Method *methods = class_copyMethodList(tempClass, &methodCount);
+            for (int k = 0; k < methodCount; k ++) {
+                Method method = methods[k];
+                class_addMethod(class, method_getName(method), method_getImplementation(method), method_getTypeEncoding(method));
+//                NSLog(@"实例方法名:%@", [NSString stringWithCString:sel_getName(method_getName(method)) encoding:NSUTF8StringEncoding]);
+            }
+            free(methods);
+            
+            
+            // 类的类方法转移
+            unsigned metaMethodCount;
+            Class metaTempClass = object_getClass(tempClass);
+            Method *metaMethods = class_copyMethodList(metaTempClass, &metaMethodCount);
+            for (int k = 0; k < metaMethodCount; k ++) {
+                Method method = metaMethods[k];
+                class_addMethod(metaClass, method_getName(method), method_getImplementation(method), method_getTypeEncoding(method));
+//                NSLog(@"类方法名:%@", [NSString stringWithCString:sel_getName(method_getName(method)) encoding:NSUTF8StringEncoding]);
+            }
+            free(metaMethods);
+            
+            // 类的实例属性转移
+            unsigned propertyCount;
+            objc_property_t *propertyList = class_copyPropertyList(tempClass, &propertyCount);
+            // 遍历临时类的所有属性并添加
+            for (int k = 0; k < propertyCount; k++) {
+                objc_property_t  property = propertyList[k];
+                unsigned int attributeCount = 0;
+                objc_property_attribute_t *attributeList = property_copyAttributeList(property, &attributeCount);
+                const char *name = property_getName(property);
+                class_addProperty(class, name, attributeList, attributeCount);
+                
+                
+//                NSString *attributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
+//                // 拆分为一个数组
+//                NSArray *arr = [attributes componentsSeparatedByString:@","];
+//                int index = 0;
+//                for (id ob in arr) {
+//                    index++;
+//                }
+//                objc_property_attribute_t *attrs = (objc_property_attribute_t *)malloc(sizeof(objc_property_attribute_t) *index);
+//                for (int j = 0; j < index; j++) {
+//                    objc_property_attribute_t attribute = attributeList[j];
+//                    if (strcmp(attribute.name, "G") == 0) {
+//                        NSString *selectorName = [NSString stringWithUTF8String:attribute.value];
+//                        SEL selector = NSSelectorFromString(selectorName);
+//
+//                    }
+//                    else if (strcmp(attribute.name, "S") == 0) {
+//                        NSString *selectorName = [NSString stringWithUTF8String:attribute.value];
+//                        SEL selector = NSSelectorFromString(selectorName);
+//                        const char *value = [selectorName UTF8String];
+//                        objc_property_attribute_t setter = {"S",value};
+//                    }
+//                    // 字符串取出
+//                    NSString *string = arr[j];
+//
+//                    objc_property_attribute_t att = getAttribute(string);
+//                    attrs[j] = att;
+//                }
+//
+//                // 添加属性到
+//                class_addProperty(class, property_getName(property), attrs, index);
+            }
+        }
+        free(protocols);
+    }
+    free(classes);
+    
+    
+    // 配置一遍属性信息列表以及数据库
+    
+}
 
-@end
+

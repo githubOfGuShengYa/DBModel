@@ -18,31 +18,32 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-//    NSMutableArray *array = [NSMutableArray array];
-//    NSMutableDictionary *dic = [NSMutableDictionary dictionary];
-//    for (int i = 0; i < 4; i++) {
-//        Dog *d = [[Dog alloc] init];
-//        d.name = [NSString stringWithFormat:@"狗子%02d", i + 1];
-//        d.food = @[@"1", @"2", @"3"];
-//        d.age = 5 + i;
-//        [array addObject:d];
-//        [dic setValue:d forKey:d.name];
+    
+    Cat *cat = [Cat new];
+    cat.name = @"xiaomao";
+    
+    Dog *dog = [[Dog alloc] init];
+    dog.name = @"xiaohong";
+    dog.age = 13;
+    dog.array = @[cat, cat, @"333", @444];
+    [dog save:^(BOOL isSuccess) {
+        NSLog(@"保存成功");
+    }];
+    
+//    NSArray *array = [Dog findAll];
+//    for (int i = 0; i < array.count; i++) {
+//        Dog *d = array[i];
+//        d.age = 22 + i;
+//        d.name = [NSString stringWithFormat:@"小狗[%d]号", i];
+//        [d update:nil];
 //    }
+
+    [Dog removeByCondition:@"where pk = 1" callback:nil];
     
+    NSArray *arr = [Dog findAll];
+    NSLog(@"%@", arr.firstObject);
+    return;
     
-//    Person *person = [[Person alloc] init];
-//        person.type_NSString = @"gushengya";
-//        person.type_BOOL = YES;
-//        person.type_int16 = 12345;
-//        person.type_CGFloat = 99.99;
-////    person.type_NSDictionary = @{@"name": @"gushengya", @"sex": array, @"age": dic};
-//    [person add:^(BOOL isSuccess) {
-//
-//    }];
-    
-    Person *p = [[Person alloc] init];
-    
-    NSLog(@"%@", p.name);
 }
 
 
