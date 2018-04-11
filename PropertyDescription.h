@@ -52,4 +52,7 @@ typedef NS_ENUM(NSUInteger, STORE_PROPERTY_TYPE) {
 /// 属性遵守的协议名数组
 @property (nonatomic, strong) NSMutableArray *protocolNameList;
 
+/// 属性所包含的类遵守了DBModelProtocol协议
+@property (nonatomic, assign) Class associateClass;
+
 @end

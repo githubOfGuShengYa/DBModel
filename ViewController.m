@@ -19,16 +19,39 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    Cat *cat = [Cat new];
-    cat.name = @"xiaomao";
+//    NSMutableArray *arr = [NSMutableArray array];
+//
+//    for (int i = 0; i < 9; i++) {
+//        Person *p = [[Person alloc] init];
+//        [p setPrimaryKeyValue:(i+1)];
+//        [arr addObject:p];
+//    }
+//
+//    for (Person *p in arr) {
+//        NSLog(@"%ld", [p primaryKeyValue]);
+//    }
     
-    Dog *dog = [[Dog alloc] init];
-    dog.name = @"xiaohong";
-    dog.age = 13;
-    dog.array = @[cat, cat, @"333", @444];
-    [dog save:^(BOOL isSuccess) {
-        NSLog(@"保存成功");
-    }];
+    
+//    Cat *cat = [[Cat alloc] init];
+//    cat.catAge = 11;
+//    cat.catName = @"xiaomao";
+//    
+//    NSMutableArray *array = [NSMutableArray array];
+//    for (int i = 0; i < 7; i++) {
+//        Cat *cat = [[Cat alloc] init];
+//        cat.catAge = i + 10;
+//        cat.catName = [NSString stringWithFormat:@"小猫:[%02d]", i + 1];
+//        [array addObject:cat];
+//    }
+//    
+//    Dog *dog = [[Dog alloc] init];
+//    dog.dogAge = 21;
+//    dog.dogName = @"猫子";
+//    dog.cat = cat;
+//    dog.catList = array;
+//    [dog save:^(BOOL isSuccess) {
+//        NSLog(@"保存成功");
+//    }];
     
 //    NSArray *array = [Dog findAll];
 //    for (int i = 0; i < array.count; i++) {
@@ -38,11 +61,20 @@
 //        [d update:nil];
 //    }
 
-    [Dog removeByCondition:@"where pk = 1" callback:nil];
+//    [Dog removeByCondition:@"where pk = 1" callback:nil];
     
-    NSArray *arr = [Dog findAll];
-    NSLog(@"%@", arr.firstObject);
-    return;
+    [Dog searchBySqlString:@"" result:^(NSArray *result) {
+        for (Dog *value in result)
+        {
+            
+            for (id v in value.catList) {
+                NSInteger p = [v primaryKeyValue];
+                
+                NSLog(@"[%@]主键值:--%ld", v, p);
+            }
+        }
+    }];
+    
     
 }
 

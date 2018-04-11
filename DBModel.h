@@ -12,6 +12,8 @@
 
 @interface DBModel : NSObject<DBModelProtocol>
 
+/// 主键值
+- (NSInteger)primaryKeyValue;
 
 @end
 

@@ -14,25 +14,35 @@
 
 @interface Person : DBModel
 
+- (void)setPrimaryKeyValue:(NSInteger)newValue;
+
+- (NSInteger)primaryKeyValue;
+
 @end
 
+@class Cat;
 
+/// 标记某属性中的自定义类遵守了DBModelProtocol协议
+@protocol Associated_Cat
+@end
 @interface Dog : NSObject<DBModelProtocol>
 
-@property (nonatomic, copy) NSString *name;
+@property (nonatomic, strong) Cat<Associated_Cat> *cat;
 
-@property (nonatomic, assign) int age;
+@property (nonatomic, copy) NSString *dogName;
 
-@property (nonatomic, copy) NSArray *array;
+@property (nonatomic, assign) NSInteger dogAge;
+
+@property (nonatomic, copy) NSArray<Associated_Cat> *catList;
 
 @end
 
 
-@interface Cat : NSObject
+@interface Cat : NSObject<DBModelProtocol>
 
-@property (nonatomic, assign) NSInteger index;
+@property (nonatomic, assign) NSInteger catAge;
 
-@property (nonatomic, copy) NSString *name;
+@property (nonatomic, copy) NSString *catName;
 
 @end
 

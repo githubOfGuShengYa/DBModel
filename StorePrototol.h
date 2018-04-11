@@ -12,13 +12,13 @@
 @end
 
 
+
 @protocol DBModelProtocol
 
 @optional
 
 @optional
-/// 主键
-@property (nonatomic, assign, readonly) int pk;
+
 
 /// 增
 - (void)add:(void(^)(BOOL isSuccess))callback;
@@ -26,6 +26,9 @@
 - (void)update:(void(^)(BOOL isSuccess))callback;
 /// 查
 + (NSArray *)findByCondition:(NSString *)condition;
+
++ (void)searchBySqlString:(NSString *)sql result:(void(^)(NSArray *result))result;
+
 /// 删
 + (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback;
 
