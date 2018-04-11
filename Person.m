@@ -35,7 +35,7 @@
 
 @implementation Dog 
 
-@synthesize pk = _pk;
+
 
 
 
@@ -43,5 +43,5 @@
 
 
 @implementation Cat
-@synthesize pk = _pk;
+
 @end

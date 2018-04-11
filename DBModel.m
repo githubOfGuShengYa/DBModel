@@ -1464,16 +1464,16 @@ static const char *AssociatedKey_MapperDic;
 {
     [self.class configPropertyAndTable];
     
-    if (self.pk <= 0) {
-        if (callback) {
-            NSLog(@"该数据没有保存到数据库中");
-            callback(NO); // 新增数据没有保存到数据库中
-        }
-        
-        return;
-    }
-    
-    [[self class] removeByCondition:[NSString stringWithFormat:@"where pk = %d;", self.pk] callback:callback];
+//    if (self.pk <= 0) {
+//        if (callback) {
+//            NSLog(@"该数据没有保存到数据库中");
+//            callback(NO); // 新增数据没有保存到数据库中
+//        }
+//        
+//        return;
+//    }
+//    
+//    [[self class] removeByCondition:[NSString stringWithFormat:@"where pk = %d;", self.pk] callback:callback];
 }
 
 #pragma mark- <-----------  扩展的数据库操作  ----------->
