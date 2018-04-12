@@ -21,13 +21,12 @@
 
 
 /// 增
-- (void)add:(void(^)(BOOL isSuccess))callback;
+- (void)add;
 /// 改
-- (void)update:(void(^)(BOOL isSuccess))callback;
+//- (void)update:(void(^)(BOOL isSuccess))callback;
+- (void)update;
 /// 查
 + (NSArray *)findByCondition:(NSString *)condition;
-
-+ (void)searchBySqlString:(NSString *)sql result:(void(^)(NSArray *result))result;
 
 /// 删
 + (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback;

@@ -26,20 +26,22 @@ NSString *const SQL_COLUMN_NAME_PrimaryKey = @"GZ_PrimaryKey_Name";
 #pragma mark- <-----------  关联对象名称  ----------->
 /// 所有属性与属性名组成的字典关联关键字 - 属性信息作为value,属性名作为key关联起来的该类属性信息列表Dic
 static const char *AssociatedKey_AllPropertyList; // 收集所有属性
+
 /// 需保存入数据库的字段
 static const char *AssociatedKey_StorePropertyList; // 收集除了只读和忽略的属性
+
 /// 需保存入数据库的字段
 static const char *AssociatedKey_NestPropertyList; // 收集嵌套的属性
+
 /// 字段关键字关联映射表Dic
 static const char *AssociatedKey_MapperDic;
-///// 关联主键值
-//static const char *AssociatedKey_PrimaryKey;
-///// 上级关联值
-//static const char *AssociatedKey_SuperiorKey;
 
 @interface DBModel()
 {
+    /// 数据在表中的主键值(不能设置为静态的, 静态会导致所有取到的值都是同一个)
     NSInteger AssociatedKey_PrimaryKey;
+    
+    /// 与上级表关联的字段
     NSString *AssociatedKey_SuperiorKey;
 }
 @end
@@ -77,90 +79,6 @@ static const char *AssociatedKey_MapperDic;
         [self configTable];
     });
 }
-
-
-
-// 循环配置遵守DBModelProtocol协议的类及其内关联属性类的所有需存储属性为数据库字段
-//+ (void)configTableWithClass:(Class)class superClass:(Class)superClass database:(FMDatabase * _Nonnull)db
-//{
-//    NSString *tableName = NSStringFromClass(class);
-//
-//    BOOL isExist = [db tableExists:tableName];
-//    if (!isExist)
-//    {
-//        NSString *sql = [NSString stringWithFormat:@"CREATE TABLE IF NOT EXISTS %@(%@);", tableName, [class configSQLStringWithSuperClass:superClass]];
-//        BOOL isSuccess = [db executeUpdate:sql];
-//        if (!isSuccess) { // 如果没有创建成功
-//            // 事务回滚, 并结束执行代码
-//            return;
-//        }
-//        NSLog(@"创建数据库表(%@)成功", sql);
-//    }
-//    else
-//    {
-//        NSLog(@"数据库表(%@)已存在", tableName);
-//    }
-//
-//    // 检查是否有嵌套属性
-//    NSDictionary *storeDic = objc_getAssociatedObject(class, &AssociatedKey_StorePropertyList);
-//    if (storeDic == nil)
-//    {
-//        [class config];
-//        storeDic = objc_getAssociatedObject(class, &AssociatedKey_StorePropertyList);
-//    }
-//    for (PropertyDescription *p in storeDic.allValues)
-//    {
-//        if (p.isIgnore == NO && p.associateClass != nil)
-//        {
-//            [class configTableWithClass:p.associateClass superClass:class database:db];
-//        }
-//    }
-//
-//    // 如果表存在了, 则开始判断不同版本数据迁移问题
-//    NSMutableArray *columnNames = [NSMutableArray array];
-//    // 根据数据库对象获取指定表的信息
-//    FMResultSet *resultSet = [db getTableSchema:tableName];
-//    // 遍历表信息
-//    while ([resultSet next]) {
-//        // 获取表对应列的名称
-//        NSString *columnName = [resultSet stringForColumn:@"name"];
-//        [columnNames addObject:columnName];
-//    }
-//
-//    // 获取需保存的属性名列表
-//    NSArray *propertyNameList = storeDic.allKeys;
-//    // 初始化一个谓词来筛选不在表中的字段
-//    NSPredicate *filterPredicate = [NSPredicate predicateWithFormat:@"NOT (SELF IN %@)", columnNames];
-//    // 用当前版本类的需保存属性列表调用筛选
-//    NSArray *unsavedProperties = [propertyNameList filteredArrayUsingPredicate:filterPredicate];
-//
-//    // 遍历未添加到数据库中的字段列表
-//    for (NSString *columnName in unsavedProperties)
-//    {
-//        // 取得该列名对应的数据类型
-//        PropertyDescription *p = storeDic[columnName];
-//
-//        if ([p.name isEqualToString:@"pk"]) continue;
-//
-//        if (p.isIgnore == NO && p.associateClass != nil) {
-//            continue;
-//        }
-//
-//        // 采用SQL语句添加新的字段到当前数据库表中
-//        NSString *sqlString = [NSString stringWithFormat:@"ALTER TABLE %@ ADD COLUMN %@ %@;", tableName, columnName, p.sqlTypeName];
-//        // 执行SQL语句添加新的字段
-//        BOOL success = [db executeUpdate:sqlString];
-//        // 判断SQL语句是否执行成功
-//        if (success) {
-//            NSLog(@"表: %@插入新的字段: %@", tableName, columnName);
-//        }else {
-//            // 事务回滚, 并结束执行代码
-//            return;
-//        }
-//    }
-//}
-
-
 
 /// 拼接属性组成的创建表sql部分语句
 + (NSString *)splicingSqlString
@@ -279,7 +197,7 @@ static const char *AssociatedKey_MapperDic;
 
 
 
-/// 检查属性列表
+/// 检查属性列表 -- 收集属性信息
 + (void)inspectProperties
 {
     NSMutableDictionary *dic = [NSMutableDictionary dictionary]; // 收集所有属性
@@ -299,16 +217,14 @@ static const char *AssociatedKey_MapperDic;
         PropertyDescription *p = [[PropertyDescription alloc] init];
         objc_property_t  property = propertyList[i];
         NSString *name = [NSString stringWithCString:property_getName(property) encoding:NSUTF8StringEncoding];
-        // 属性名称
         p.name = name;
         
+        // 属性描述信息
         NSString *attributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
         NSArray *items = [attributes componentsSeparatedByString:@","];
         
         // 只读
-        if ([items containsObject:@"R"]) {
-            p.isReadOnly = YES;
-        }
+        if ([items containsObject:@"R"]) { p.isReadOnly = YES;}
         
         // 初始化扫描器
         scanner = [NSScanner scannerWithString:attributes];
@@ -324,17 +240,20 @@ static const char *AssociatedKey_MapperDic;
             // 截取类型字符串 -- 1. T@"NSString"样式  2. T@"NSString<协议名>"样式
             [scanner scanUpToCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&propertyType];
             // 赋值属性类型 -- 如果是自定义的类型, 则此处取不到类型
-            p.type = NSClassFromString(propertyType);
-            p.typeName = propertyType;
+            p.ocType = NSClassFromString(propertyType);
             // 是否可变
             p.isMutable = ([propertyType rangeOfString:@"Mutable"].location != NSNotFound);
             
             // 属于字符串
-            if ([p.type isSubclassOfClass:[NSString class]]) // 字符串系可直接保存为TEXT格式
+            if ([p.ocType isSubclassOfClass:[NSString class]]) // 字符串系可直接保存为TEXT格式
             {
                 p.sqlTypeName = @"TEXT";
             }
-            else // 非字符串系保存为二进制格式
+            else if ([p.ocType isSubclassOfClass:[NSNumber class]]) // NSNumber类型可保存为浮点型
+            {
+                p.sqlTypeName = @"REAL";
+            }
+            else // 其余ObjectC类型保存为二进制格式
             {
                 p.sqlTypeName = @"BLOB";
             }
@@ -374,8 +293,7 @@ static const char *AssociatedKey_MapperDic;
         }
         else if ([scanner scanString:@"@?" intoString:nil]) // Block
         {
-            propertyType = @"Block";
-            p.typeName = propertyType;
+            p.notOcType = @"Block";
             // Block分类
             p.classify = STORE_PROPERTY_TYPE_BLOCK;
             p.isIgnore = YES; // Block自动划入忽略项
@@ -384,8 +302,7 @@ static const char *AssociatedKey_MapperDic;
         {
             // 截取结构体名 -- T{MyStruct=}格式, 从{开始到=号结束, 其中=号可能是任意数字或字母(不区分大小写)
             [scanner scanUpToCharactersFromSet:[NSCharacterSet alphanumericCharacterSet] intoString:&propertyType];
-            p.typeName = propertyType;
-            
+            p.notOcType = [NSString stringWithFormat:@"Struct_%@", propertyType];
             // 结构体分类
             p.classify = STORE_PROPERTY_TYPE_STUCT;
             p.isIgnore = YES; // 结构体自动划入忽略项
@@ -417,8 +334,6 @@ static const char *AssociatedKey_MapperDic;
                 }
             }
         }
-        
-        NSLog(@"属性名: %@, 属性类型: %@-%@", p.name, p.typeName, attributes);
     }
     
     // 释放属性列表
@@ -437,41 +352,41 @@ static const char *AssociatedKey_MapperDic;
     if ([type isEqualToString:@"q"]) // int64位类型、long类型、longlong类型
     {
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"int64_t";
     }
     else if ([type isEqualToString:@"i"]) // int32位类型、int类型
     {
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"int32_t";
     }
     else if ([type isEqualToString:@"s"]) // int16位类型
     {
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"int16_t";
     }
     else if ([type isEqualToString:@"c"]) // int8位类型
     {
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"int8_t";
     }
     else if ([type isEqualToString:@"f"]) // 单精度float类型
     {
         p.sqlTypeName = @"REAL";
-        p.typeName = SYPropertyType_CGFloat;
+        p.notOcType = @"float";
     }
     else if ([type isEqualToString:@"d"]) // 双精度double类型、双精度CGFloat
     {
         p.sqlTypeName = @"REAL";
-        p.typeName = SYPropertyType_CGFloat;
+        p.notOcType = @"double";
     }
     else if ([type isEqualToString:@"B"]) // BOOL类型
     {
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"BOOL";
     }
     else { // 其他类型
         p.sqlTypeName = @"INTEGER";
-        p.typeName = SYPropertyType_Integer;
+        p.notOcType = @"int";
     }
 }
 
@@ -503,34 +418,6 @@ static const char *AssociatedKey_MapperDic;
     return NO;
 }
 
-
-
-///// 需保存属性名与属性类型组成的SQL语句片段字符串
-//+ (NSString *)configSQLStringWithSuperClass:(Class)superClass
-//{
-//    NSMutableString *str = [NSMutableString string];
-//    NSDictionary *dic = objc_getAssociatedObject(self, &AssociatedKey_StorePropertyList);
-//    if (dic == nil) {
-//        [self config];
-//        dic = objc_getAssociatedObject(self, &AssociatedKey_StorePropertyList);
-//    }
-//    for (PropertyDescription *obj in dic.allValues) {
-//        if ([obj.name isEqualToString:@"pk"]) { // 自增主键
-//            [str appendFormat:@"pk INTEGER PRIMARY KEY AUTOINCREMENT,"];
-//        }else if (obj.associateClass != nil && obj.isIgnore == NO && superClass != nil) { // 属性为嵌套且未被忽略
-//            [str appendFormat:@"%@_pk %@,", NSStringFromClass(superClass), @"INTEGER"];
-//        }else {
-//            // 如果该属性不被忽略则表示需要保存到SQL中
-//            [str appendFormat:@"%@ %@,", obj.name, obj.sqlTypeName];
-//        }
-//    }
-//
-//    // 删除最后一个多余的逗号
-//    [str deleteCharactersInRange: NSMakeRange(str.length -1, 1)];
-//
-//    return str.copy;
-//}
-
 /// 是否已存在表
 + (void)isExistTable:(void(^)(BOOL isExist))callback
 {
@@ -545,142 +432,6 @@ static const char *AssociatedKey_MapperDic;
 }
 
 #pragma mark- <-----------  数据库操作  ----------->
-
-
-//- (void)addWithSuperClass:(Class)superClass
-//{
-//    [self.class configPropertyAndTable];
-//
-//    NSString *tableName = NSStringFromClass([self class]);
-//    NSMutableString *columnNameString = [NSMutableString string];
-//    NSMutableString *columnValueString = [NSMutableString string];
-//    NSMutableArray *columnValues = [NSMutableArray array];
-//
-//    // 嵌套时的key与value
-//    NSMutableString *nestColumnName = [NSMutableString string];
-//    NSMutableArray *nestColumnValue = [NSMutableArray array];
-//
-//    // 取得属性名数组
-//    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
-//    NSArray *propertyNameList = dic.allKeys;
-//    // 遍历需保存到数据库的属性列表
-//    for (int i = 0; i < propertyNameList.count; i++) {
-//        // 取得对应索引的列名
-//        NSString *columnName = [propertyNameList objectAtIndex:i];
-//
-//        PropertyDescription *p = dic[columnName];
-//
-//        // 判断是否是主键, 如果是则跳出并继续循环
-//        if ([columnName isEqualToString:@"pk"]) {
-//            continue;
-//        }
-//
-//        // 是否嵌套
-//        if (p.associateClass && p.isIgnore == NO) // 嵌套的话如果是集合只能是ObjectC类型所以必定实现了isSubclassOfClass:方法
-//        {
-//            if ([p.type isEqual:p.associateClass]) // 属性即对象
-//            {
-//                id obj = [self valueForKey:columnName];
-//                [obj addWithSuperClass:self.class];
-//
-//            }
-//            else if ([p.type isSubclassOfClass:[NSArray class]]) // 隶属于数组
-//            {
-//                NSArray *array = [self valueForKey:columnName];
-//                [array enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-//                    [obj addWithSuperClass:self.class];
-//                }];
-//            }
-//            else if ([p.type isSubclassOfClass:[NSDictionary class]]) // 隶属于字典
-//            {
-//
-//            }
-//            continue;
-//        }
-//
-//        // 如果是基础数据类型时取出的值为NSNumber类型
-//        id value = [self valueForKey:columnName];// 当NSDate被assign修饰的时候会在此处crash
-//
-//        // 拼接到SQL语句字符串上
-//        [columnNameString appendFormat:@"%@,", columnName];
-//
-//        // 如果是空值则不需要拼接到sql语句中
-//        if (value == nil)
-//        {
-//            [columnValueString appendString:@"null,"];
-//        }
-//        else {
-//            [columnValueString appendFormat:@"?,"];
-//
-//            // 字符串
-//            if ([p.type isSubclassOfClass:[NSString class]])
-//            {
-//                // 把值添加的数组中
-//                [columnValues addObject:value];
-//            }
-//            else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-//            {
-//                NSError *error = nil; NSData *data = nil;
-//                @try {
-//                    data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-//                    if (!error) {
-//                        NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-//                        [columnValues addObject:jsonStr];
-//                    }else {
-//                        [columnValues addObject:value];
-//                    }
-//                }
-//                @catch (NSException *e) {
-//                    [columnValues addObject:value];
-//                }
-//
-//            }
-//            else
-//            {
-//                // 把值添加的数组中
-//                [columnValues addObject:value];
-//            }
-//        }
-//    }
-//
-//    // 清除最后一个逗号
-//    if (columnNameString.length > 0) {
-//        [columnNameString deleteCharactersInRange:NSMakeRange(columnNameString.length - 1, 1)];
-//        [columnValueString deleteCharactersInRange:NSMakeRange(columnValueString.length - 1, 1)];
-//    }
-//
-//
-//
-//    // 获取管理者单例
-//    DBManager *manager = [DBManager manager];
-//    // 使用数据库队列执行保存操作
-//    [manager.databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
-//        // 拼接SQL语句
-//        NSString *sqlString = [NSString stringWithFormat:@"INSERT INTO %@(%@) VALUES (%@);", tableName, columnNameString, columnValueString];
-//        NSLog(@"数据库表(%@)插入SQL语句:(%@)", tableName, sqlString);//
-//#pragma clang diagnostic push
-//#pragma clang diagnostic ignored "-W#warnings"
-//#warning 该方法第二个参数用于替代?所表示的值, 但是如果想让某个值为空则不能用?号替代添加到该数组中, 由于未知的原因如果向其内添加一个@"null"会导致实际存储的是@"null字符串"
-//#pragma clang diagnostic pop
-//        BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValues];
-//        if (isSuccess) {
-//            //            self.pk = [NSNumber numberWithLongLong:db.lastInsertRowId].intValue;
-//            NSLog(@"插入数据成功");
-////            if (callback) {
-////                callback(YES);
-////            }
-//        }else {
-//            // 事务回滚, 并结束执行代码
-//            *rollback = YES;
-//            NSLog(@"插入数据失败");
-////            if (callback) {
-////                callback(NO);
-////            }
-//            return;
-//        }
-//    }];
-//}
-
 - (void)insertWithDatabase:(FMDatabase *)db rollback:(BOOL *)rollback associatedColumnName:(NSString *)columnName
 {
     // 1. 遍历当前对象所在类的存储属性列表
@@ -719,24 +470,36 @@ static const char *AssociatedKey_MapperDic;
             [valueList appendFormat:@"?,"];
             
             // 1.3 分类型
-            if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
+            if (p.ocType != nil && ![p.ocType isSubclassOfClass:[NSNull class]]) // OC对象
             {
-                NSError *error = nil; NSData *data = nil;
-                @try {
-                    data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-                    if (!error) {
-                        NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                        [values addObject:jsonStr];
-                    }else {
+                if ([p.ocType isSubclassOfClass:[NSArray class]] || [p.ocType isSubclassOfClass:[NSDictionary class]]) // 数组或字典
+                {
+                    // 1.3.1 尝试进行JSON序列化, 如果不成功则直接保存为二进制数据
+                    NSError *error = nil; NSData *data = nil;
+                    @try {
+                        data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
+                        if (!error) {
+                            NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                            [values addObject:jsonStr];
+                        }else {
+                            [values addObject:value];
+                        }
+                    }
+                    @catch (NSException *e) {
                         [values addObject:value];
                     }
+                    
                 }
-                @catch (NSException *e) {
+                else // 非集合类型
+                {
                     [values addObject:value];
                 }
-                
             }
-            else // 非集合类型
+            else if (p.notOcType != nil && ![p.notOcType isKindOfClass:[NSNull class]]) // 非OC对象
+            {
+                [values addObject:value];
+            }
+            else
             {
                 [values addObject:value];
             }
@@ -776,7 +539,7 @@ static const char *AssociatedKey_MapperDic;
             id value = [self valueForKey:p.name];
             
             // 1.6.2.3 判断嵌套属性集合类型
-            if ([p.type isSubclassOfClass:[NSArray class]]) // 嵌套的是个数组
+            if ([p.ocType isSubclassOfClass:[NSArray class]]) // 嵌套的是个数组
             {
                 for (id subValue in value) {
                     if ([subValue isKindOfClass:p.associateClass]) {
@@ -784,11 +547,11 @@ static const char *AssociatedKey_MapperDic;
                     }
                 }
             }
-            else if ([p.type isSubclassOfClass:[NSDictionary class]]) // 嵌套的是个字典
+            else if ([p.ocType isSubclassOfClass:[NSDictionary class]]) // 嵌套的是个字典
             {
                 
             }
-            else if ([p.type isSubclassOfClass:p.associateClass]) // 嵌套的是类
+            else if ([p.ocType isSubclassOfClass:p.associateClass]) // 嵌套的是类
             {
                 [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedColumnValue];
             }
@@ -804,266 +567,160 @@ static const char *AssociatedKey_MapperDic;
         *rollback = YES;
     }
 }
-- (void)addWithSuperiorID:(NSInteger)superiorID superiorClass:(Class)superiorClass superiorProperty:(NSString *)superiorProperty db:(FMDatabase *)db
-{
-    // 1. 遍历当前对象所在类的存储属性列表
-    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
-    NSDictionary *nestdic = objc_getAssociatedObject([self class], &AssociatedKey_NestPropertyList);
-    
-    // 1.2 可直接存储的属性
-    NSMutableString *columnList = [NSMutableString string];
-    NSMutableString *valueList = [NSMutableString string];
-    NSMutableArray *values = [NSMutableArray array];
-    
-    // 1.3 上级关联字段配置
-    [columnList appendFormat:@"%@,", SQL_COLUMN_NAME_SuperiorKey];
-    if (superiorID > 0) // 存在与上级关联
-    {
-        [valueList appendFormat:@"?,"];
-        [values addObject:[NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(superiorClass), superiorProperty, superiorID]];
-    }
-    else
-    {
-        [valueList appendFormat:@"null,"];
-    }
-    
-    // 1.4 非嵌套属性字段配置
-    for (NSString *key in dic.allKeys) {
-        PropertyDescription *p = dic[key];
-        
-        id value = [self valueForKey:p.name];
-        [columnList appendFormat:@"%@,", p.name];
-        if (value == nil || [value isEqual:[NSNull null]]) // 空值
-        {
-            [valueList appendFormat:@"null,"];
-        }
-        else
-        {
-            [valueList appendFormat:@"?,"];
-            
-            // 1.3 分类型
-            if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-            {
-                NSError *error = nil; NSData *data = nil;
-                @try {
-                    data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-                    if (!error) {
-                        NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                        [values addObject:jsonStr];
-                    }else {
-                        [values addObject:value];
-                    }
-                }
-                @catch (NSException *e) {
-                    [values addObject:value];
-                }
-                
-            }
-            else // 非集合类型
-            {
-                [values addObject:value];
-            }
-        }
-    }
-    
-    // 清除最后一个逗号
-    if (columnList.length > 0) {
-        [columnList deleteCharactersInRange:NSMakeRange(columnList.length - 1, 1)];
-    }
-    if (valueList.length > 0) {
-        [valueList deleteCharactersInRange:NSMakeRange(valueList.length - 1, 1)];
-    }
-    
-    // 1.5 拼接当前添加类的插入sql语句
-    NSString *sqlString = [NSString stringWithFormat:@"INSERT INTO %@(%@) VALUES (%@);", NSStringFromClass([self class]), columnList, valueList];
-    
-    // 1.6 执行插入语句
-    BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:values];
-    if (isSuccess)
-    {
-        NSLog(@"[%@]插入数据成功(%@)", NSStringFromClass([self class]), sqlString);
-        
-        // 1.6.1 主键id
-        NSInteger pkID = db.lastInsertRowId;
-        
-        // 1.6.2 嵌套属性处理
-        for (NSString *key in nestdic.allKeys)
-        {
-            // 1.6.2.1 属性信息对象
-            PropertyDescription *p = nestdic[key];
-            
-            // 1.6.2.2 属性值
-            id value = [self valueForKey:p.name];
-            
-            // 1.6.2.3 判断嵌套属性集合类型
-            if ([p.type isKindOfClass:[NSArray class]]) // 嵌套的是个数组
-            {
-                for (id subValue in value) {
-                    if ([subValue isKindOfClass:p.associateClass]) {
-                        [value addWithSuperiorID:pkID superiorClass:self.class superiorProperty:p.name db:db];
-                    }
-                }
-            }
-            else if ([p.type isKindOfClass:[NSDictionary class]]) // 嵌套的是个字典
-            {
-                
-            }
-            else if ([p.type isKindOfClass:p.associateClass]) // 嵌套的是类
-            {
-                [value addWithSuperiorID:pkID superiorClass:self.class superiorProperty:p.name db:db];
-            }
-            else // 其他
-            {
-                
-            }
-        }
-    }
-    else
-    {
-        NSLog(@"[%@]插入数据成功(%@)", NSStringFromClass([self class]), sqlString);
-    }
-}
 
 // FIXME: 新增
 /// 增
-- (void)add:(void(^)(BOOL isSuccess))callback
-{
+- (void)add {
     [self.class configPropertyAndTable];
-    
+
     [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
         [self insertWithDatabase:db rollback:rollback associatedColumnName:nil];
     }];
+}
+
+- (void)updateWithDatabase:(FMDatabase *)db rollback:(BOOL *)rollback
+{
+    // 1. 非嵌套部分update
+    NSDictionary *unNestPart = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
     
+    // 1.0 初始化拼接用源
+    NSMutableArray *valueList = [NSMutableArray array];
+    NSMutableString *columnString = [NSMutableString string];
     
+    // 1.1 遍历非嵌套部分字段
+    for (NSString *key in unNestPart.allKeys)
+    {
+        // 1.1.2 属性信息对象
+        PropertyDescription *p = unNestPart[key];
+        
+        // 1.1.3 只读略过
+        if (p.isReadOnly) continue;
+        
+        // 1.1.4 对应属性的值
+        id value = [self valueForKey:p.name];
+        
+        // 1.1.5 空值传入null
+        if (value == nil || [value isKindOfClass:[NSNull class]]) {
+            [columnString appendFormat:@"%@=null,", p.name];
+            continue;
+        }
+        
+        // 1.1.6 非空值
+        [columnString appendFormat:@"%@=?,", p.name];
+        
+        // 1.1.7 属性类型判断
+        if ([p.ocType isSubclassOfClass:[NSArray class]] || [p.ocType isSubclassOfClass:[NSDictionary class]]) {
+            NSError *error = nil; NSData *data = nil;
+            @try {
+                data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
+                if (!error) {
+                    NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                    [valueList addObject:jsonStr];
+                }else {
+                    [valueList addObject:value];
+                }
+            }
+            @catch (NSException *e) {
+                [valueList addObject:value];
+            }
+            continue;
+        }
+        
+        // 1.1.8 其他类型直接添加
+        [valueList addObject:value];
+    }
     
-//    NSString *tableName = NSStringFromClass([self class]);
-//    NSMutableString *columnNameString = [NSMutableString string];
-//    NSMutableString *columnValueString = [NSMutableString string];
-//    NSMutableArray *columnValues = [NSMutableArray array];
-//
-//    // 嵌套时的key与value
-//    NSMutableString *nestColumnName = [NSMutableString string];
-//    NSMutableArray *nestColumnValue = [NSMutableArray array];
-//
-//    // 取得属性名数组
-//    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
-//    NSArray *propertyNameList = dic.allKeys;
-//    // 遍历需保存到数据库的属性列表
-//    for (int i = 0; i < propertyNameList.count; i++) {
-//        // 取得对应索引的列名
-//        NSString *columnName = [propertyNameList objectAtIndex:i];
-//
-//        PropertyDescription *p = dic[columnName];
-//
-//        // 判断是否是主键, 如果是则跳出并继续循环
-//        if ([columnName isEqualToString:@"pk"]) {
-//            continue;
-//        }
-//
-//        // 是否嵌套
-//        if (p.associateClass) // 嵌套的话如果是集合只能是ObjectC类型所以必定实现了isSubclassOfClass:方法
-//        {
-//            if ([p.type isEqual:p.associateClass]) // 属性即对象
-//            {
-//                id obj = [self valueForKey:columnName];
-//                [obj add:nil];
-//
-//            }
-//            else if ([p.type isSubclassOfClass:[NSArray class]]) // 隶属于数组
-//            {
-//                NSArray *array = [self valueForKey:columnName];
-//                [array enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-//                    [obj add:nil];
-//                }];
-//            }
-//            else if ([p.type isSubclassOfClass:[NSDictionary class]]) // 隶属于字典
-//            {
-//
-//            }
-//            continue;
-//        }
-//
-//        // 如果是基础数据类型时取出的值为NSNumber类型
-//        id value = [self valueForKey:columnName];// 当NSDate被assign修饰的时候会在此处crash
-//
-//        // 拼接到SQL语句字符串上
-//        [columnNameString appendFormat:@"%@,", columnName];
-//
-//        // 如果是空值则不需要拼接到sql语句中
-//        if (value == nil)
-//        {
-//            [columnValueString appendString:@"null,"];
-//        }
-//        else {
-//            [columnValueString appendFormat:@"?,"];
-//
-//            // 字符串
-//            if ([p.type isSubclassOfClass:[NSString class]])
-//            {
-//                // 把值添加的数组中
-//                [columnValues addObject:value];
-//            }
-//            else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-//            {
-//                NSError *error = nil; NSData *data = nil;
-//                @try {
-//                    data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-//                    if (!error) {
-//                        NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-//                        [columnValues addObject:jsonStr];
-//                    }else {
-//                        [columnValues addObject:value];
-//                    }
-//                }
-//                @catch (NSException *e) {
-//                    [columnValues addObject:value];
-//                }
-//
-//            }
-//            else
-//            {
-//                // 把值添加的数组中
-//                [columnValues addObject:value];
-//            }
-//        }
-//    }
-//
-//    // 清除最后一个逗号
-//    if (columnNameString.length > 0) {
-//        [columnNameString deleteCharactersInRange:NSMakeRange(columnNameString.length - 1, 1)];
-//        [columnValueString deleteCharactersInRange:NSMakeRange(columnValueString.length - 1, 1)];
-//    }
-//
-//
-//
-//    // 获取管理者单例
-//    DBManager *manager = [DBManager manager];
-//    // 使用数据库队列执行保存操作
-//    [manager.databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
-//        // 拼接SQL语句
-//        NSString *sqlString = [NSString stringWithFormat:@"INSERT INTO %@(%@) VALUES (%@);", tableName, columnNameString, columnValueString];
-//        NSLog(@"数据库表(%@)插入SQL语句:(%@)", tableName, sqlString);//
-//#pragma clang diagnostic push
-//#pragma clang diagnostic ignored "-W#warnings"
-//#warning 该方法第二个参数用于替代?所表示的值, 但是如果想让某个值为空则不能用?号替代添加到该数组中, 由于未知的原因如果向其内添加一个@"null"会导致实际存储的是@"null字符串"
-//#pragma clang diagnostic pop
-//        BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValues];
-//        if (isSuccess) {
-////            self.pk = [NSNumber numberWithLongLong:db.lastInsertRowId].intValue;
-//            NSLog(@"插入数据成功");
-////            if (callback) {
-////                callback(YES);
-////            }
-//        }else {
-//            // 事务回滚, 并结束执行代码
-//            *rollback = YES;
-//            NSLog(@"插入数据失败");
-////            if (callback) {
-////                callback(NO);
-////            }
-//            return;
-//        }
-//    }];
+    // 1.2 移除最后一个逗号
+    if (columnString.length > 0) {
+        [columnString deleteCharactersInRange:NSMakeRange(columnString.length - 1, 1)];
+    }
+    
+    // 1.3 整理更新的sql语句
+    NSString *sql = [NSString stringWithFormat:@"UPDATE %@ SET %@ WHERE %@ = %ld;", NSStringFromClass(self.class), columnString, SQL_COLUMN_NAME_PrimaryKey, [self primaryKeyValue]];
+    
+    // 1.4 执行sql语句
+    BOOL isSuccess = [db executeUpdate:sql withArgumentsInArray:valueList];
+    if (isSuccess) {
+        NSLog(@"[%@表更新成功](%@)", NSStringFromClass(self.class), sql);
+    }else {
+        // 事务回滚, 并结束执行代码
+        *rollback = YES;
+        NSLog(@"[%@表更新失败](%@)", NSStringFromClass(self.class), sql);
+        return;
+    }
+    
+    // 2. 嵌套部分进一步判断
+    NSDictionary *nestPart = objc_getAssociatedObject([self class], &AssociatedKey_NestPropertyList);
+    
+    // 2.1 遍历嵌套部分
+    for (NSString *key in nestPart.allKeys)
+    {
+        // 2.1.1 属性信息对象
+        PropertyDescription *p = nestPart[key];
+        
+        // 2.1.2 是以什么类型嵌套的(直接嵌套、数组嵌套、字典嵌套)
+        if ([p.associateClass isSubclassOfClass:p.ocType]) // 直接嵌套
+        {
+            // 2.1.2.1 取得对应属性的值
+            id value = [self valueForKey:p.name];
+            
+            // 2.1.2.2 主键值与关联值
+            NSInteger pk = [value primaryKeyValue];
+            NSString *associatedValue_Object = [value superiorKeyValue]; // 对象中的值
+            NSString *associatedValue_Splice = [NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(self.class), p.name, [self primaryKeyValue]]; // 由上级内容信息拼接到的值
+            
+            // 2.1.2.3 主键值大于0表示原本就存在, 小于等于0表示这是个新对象
+            if (pk <= 0) {
+                // 假如原关联内容存在, 则移除
+                
+                
+                // 添加新的内容到数据库中
+                [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedValue_Splice];
+                continue;
+            }
+            
+            // 2.1.2.4 原本就存在时判断与上级关联字段值是否一致(防止出现别的内容嫁接到该处)
+            if (![associatedValue_Object isEqualToString:associatedValue_Splice]) {
+                // 假如原关联内容存在, 则移除
+                
+                
+                // 添加新的内容到数据库中
+                [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedValue_Splice];
+                continue;
+            }
+            
+            // 2.1.2.5 拼接的值与关联值一致时, 表示该值是原来的值可以直接更新, 再次进入这个循环
+            [value updateWithDatabase:db rollback:rollback];
+        }
+        else if ([p.associateClass isSubclassOfClass:[NSArray class]]) // 以数组形式嵌套
+        {
+            // 移除当前该数组属性下所有关联的数据库中内容
+            
+            // 添加新的与该属性关联的内容到数据库中
+        }
+        else if ([p.associateClass isSubclassOfClass:[NSDictionary class]]) // 以字典形式嵌套
+        {
+            
+        }
+        else // 其他形式暂不支持
+        {
+            NSLog(@"对不起,其他形式暂时不支持");
+        }
+    }
+}
+
+- (void)update
+{
+    // 1. 判断主键是否大于0[1.大于0表示该值在数据库中原本存在可以更新、2.不大于0表示该值在数据库中不存在]
+    if ([self primaryKeyValue] <= 0) {
+        NSLog(@"该对象不在数据库中");
+        return;
+    }
+    
+    // 2. 更新数据库数据
+    [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
+        [self updateWithDatabase:db rollback:rollback];
+    }];
 }
 
 // FIXME: 更改
@@ -1110,27 +767,27 @@ static const char *AssociatedKey_MapperDic;
             [sql_ColumnName appendFormat:@"%@=?,", p.name];
             
             // 字符串
-            if ([p.type isSubclassOfClass:[NSString class]])
-            {
-                // 把值添加的数组中
-                [columnValueList addObject:value];
-            }
-            else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-            {
-                NSError *error = nil;
-                NSData *data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-                if (!error) {
-                    NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                    [columnValueList addObject:jsonStr];
-                }else {
-                    [columnValueList addObject:value];
-                }
-            }
-            else
-            {
-                // 把值添加的数组中
-                [columnValueList addObject:value];
-            }
+//            if ([p.type isSubclassOfClass:[NSString class]])
+//            {
+//                // 把值添加的数组中
+//                [columnValueList addObject:value];
+//            }
+//            else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
+//            {
+//                NSError *error = nil;
+//                NSData *data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
+//                if (!error) {
+//                    NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+//                    [columnValueList addObject:jsonStr];
+//                }else {
+//                    [columnValueList addObject:value];
+//                }
+//            }
+//            else
+//            {
+//                // 把值添加的数组中
+//                [columnValueList addObject:value];
+//            }
         }
     }
     
@@ -1163,6 +820,24 @@ static const char *AssociatedKey_MapperDic;
             return;
         }
     }];
+}
+
+// FIXME: 查询
+/// 查
++ (NSArray *)findByCondition:(NSString *)condition
+{
+    // 1. 配置属性信息与数据库表
+    [self configPropertyAndTable];
+    
+    // 2. 调起数据队列的事务方法
+    __block NSArray *array = nil;
+    [[DBManager manager].databaseQueue inDatabase:^(FMDatabase * _Nonnull db) {
+        NSString *sqlString = [NSString stringWithFormat:@"SELECT * FROM %@ %@;", NSStringFromClass(self), condition];
+        
+        array = [self searchBySqlString:sqlString inDatabase:db];
+    }];
+    
+    return array.copy;
 }
 
 + (NSArray *)searchBySqlString:(NSString *)sql inDatabase:(FMDatabase *)db
@@ -1199,48 +874,47 @@ static const char *AssociatedKey_MapperDic;
             // 3.3.1 取得对应value值
             PropertyDescription *p = storeDic[key];
             
-            // 3.3.2 分类判断
-            if ([p.typeName isEqualToString:SYPropertyType_Integer]) // 整型
-            {
-                long long value = [[dic valueForKey:p.name] longLongValue];
-                [model setValue:[NSNumber numberWithLongLong:value] forKey:p.name];
-            }
-            else if ([p.typeName isEqualToString:SYPropertyType_CGFloat]) // 浮点型
-            {
-                double value = [[dic valueForKey:p.name] doubleValue];
-                [model setValue:[NSNumber numberWithDouble:value] forKey:p.name];
-            }
-            else if ([p.type isSubclassOfClass:[NSString class]]) // 字符串类型
+            // 分为[1. OC对象(字符串、数组、字典、NSNumber、Class)、2. 非OC对象(基础数据类型、Block、结构体)]
+            if (p.ocType != nil && ![p.ocType isSubclassOfClass:[NSNull class]]) // OC对象
             {
                 NSString *value = [dic valueForKey:p.name];
-                [model setValue:(p.isMutable ? value.mutableCopy : value) forKey:p.name];
-            }
-            else // 正常OC类型, 保存为二进制数据
-            {
-                if (p.type != nil && ![p.type isKindOfClass:[NSNull class]]) {
-                    id value = [dic objectForKey:p.typeName];
-                    
-                    if (![value isKindOfClass:[NSNull class]] && value != nil) {
-                        
-                        // 字符串
-                        if ([p.type isSubclassOfClass:[NSString class]])
-                        {
-                            [model setValue:value forKey:p.typeName];
-                        }
-                        // 数组 || 字典
-                        else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-                        {
-                            NSData *valueData = [value dataUsingEncoding:NSUTF8StringEncoding];
-                            NSError *error = nil;
-                            id objc = [NSJSONSerialization JSONObjectWithData:valueData options:kNilOptions error:&error];
-                            if (error) {
-                                NSLog(@"反序列化失败");
-                                continue;
-                            }
-                            [model setValue:objc forKey:p.name];
-                        }
-                    }
+                if (value == nil || [value isKindOfClass:[NSNull class]]) continue;
+                if ([p.ocType isSubclassOfClass:[NSString class]]) // 字符串类型
+                {
+                    [model setValue:(p.isMutable ? value.mutableCopy : value) forKey:p.name];
                 }
+                else if ([p.ocType isSubclassOfClass:[NSNumber class]]) // NSNumber类型
+                {
+                    [model setValue:value forKey:p.name];
+                }
+                else if ([p.ocType isSubclassOfClass:[NSArray class]] || [p.ocType isSubclassOfClass:[NSArray class]]) // 数组或字典
+                {
+                    NSData *valueData = [value dataUsingEncoding:NSUTF8StringEncoding];
+                    NSError *error = nil;
+                    id objc = [NSJSONSerialization JSONObjectWithData:valueData options:kNilOptions error:&error];
+                    if (error) {
+                        NSLog(@"反序列化失败");
+                        continue;
+                    }
+                    [model setValue:objc forKey:p.name];
+                }
+            }
+            else if (p.notOcType != nil && ![p.notOcType isKindOfClass:[NSNull class]]) // 非OC对象
+            {
+                if ([p.notOcType isEqualToString:@"Block"]) continue; // block类型
+                if ([p.notOcType hasPrefix:@"Struct_"]) continue; // 结构体类型
+                
+                // 需要做兼容(当新添加一个基础数据类型到表中时, 由于前面的数据没有该字段默认为null)
+                id value = [dic valueForKey:p.name];
+                if (value == nil || [value isKindOfClass:[NSNull class]]) {
+                    [model setValue:@0 forKey:p.name];
+                }else {
+                    [model setValue:[dic valueForKey:p.name] forKey:p.name];
+                }
+            }
+            else // 其他
+            {
+                [model setValue:[dic valueForKey:p.name] forKey:p.name];
             }
         }
         
@@ -1263,22 +937,26 @@ static const char *AssociatedKey_MapperDic;
             NSArray *resultModelArray = [p.associateClass searchBySqlString:sql inDatabase:db];
             
             // 3.4.5 判断嵌套属性的类型
-            if ([p.type isSubclassOfClass:[NSArray class]]) // 数组
+            if ([p.ocType isSubclassOfClass:[NSArray class]]) // 数组
             {
                 if (resultModelArray.count > 0) {
                     [model setValue:resultModelArray forKey:p.name];
                 }
             }
-            else if ([p.type isSubclassOfClass:[NSDictionary class]]) // 字典
+            else if ([p.ocType isSubclassOfClass:[NSDictionary class]]) // 字典
             {
                 
             }
-            else if ([p.type isSubclassOfClass:p.associateClass]) // 嵌套类
+            else if ([p.ocType isSubclassOfClass:p.associateClass]) // 嵌套类
             {
                 // 取出数组中第一个值赋给作为嵌套类的属性
                 if (resultModelArray.count > 0) {
                     [model setValue:resultModelArray.firstObject forKey:p.name];
                 }
+            }
+            else
+            {
+                
             }
         }
         
@@ -1288,130 +966,6 @@ static const char *AssociatedKey_MapperDic;
     
     
     return resultModels;
-}
-
-/// 查询--仅限嵌套的属性与数组
-+ (void)searchBySqlString:(NSString *)sql result:(void(^)(NSArray *result))result
-{
-    // 1. 配置属性信息与数据库表
-    [self configPropertyAndTable];
-    
-    // 2. 调起数据队列的事务方法
-    [[DBManager manager].databaseQueue inDatabase:^(FMDatabase * _Nonnull db) {
-        NSString *sqlString = [NSString stringWithFormat:@"SELECT * FROM %@ %@;", NSStringFromClass(self), sql];
-        
-        NSArray *array = [self searchBySqlString:sqlString inDatabase:db];
-        if (result) {
-            result(array);
-        }
-    }];
-}
-
-// FIXME: 查询
-/// 查
-+ (NSArray *)findByCondition:(NSString *)condition
-{
-    [self.class configPropertyAndTable];
-    
-    // 取得数据管理者单例
-    DBManager *manager = [DBManager manager];
-    
-    // 所有搜索结果数组
-    __block NSMutableArray *resultArray = [NSMutableArray array];
-    // 执行查询
-    [manager.databaseQueue inDatabase:^(FMDatabase * _Nonnull db) {
-        // 获取类名
-        NSString *tableName = NSStringFromClass([self class]);
-        
-        // SQL语句 - select * from table where column = columnName;
-        NSString *sqlString = [NSString stringWithFormat:@"SELECT * FROM %@ %@%@", tableName, (condition ? condition : @""), (condition ? ([condition hasSuffix:@";"] ? @"" : @";") : @";")];
-        NSLog(@"数据库表(%@)SQL查询语句(%@)", tableName, sqlString);
-        // 结果集
-        FMResultSet *resultSet = [db executeQuery:sqlString];
-        
-        // 需保存的属性
-        NSDictionary *associatedDic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
-        
-        // 当前类需保存的属性名数组
-        NSArray *list = associatedDic.allKeys;
-        
-        // 遍历结果集
-        while ([resultSet next]) {
-            id model = [[[self class] alloc] init];
-            // 将FMResultSet转换为NSDictionary
-            NSDictionary *dic = [resultSet resultDictionary]; // 数据库中的NULL值会在FMResultSet中自动被转化为字符串@"NULL"
-            NSLog(@"%@", dic);
-            
-            
-            // 遍历属性列表
-            for (int i = 0; i < list.count; i++) {
-                
-                // 获得属性名
-                NSString *propertyName = list[i];
-                
-                PropertyDescription *p = associatedDic[propertyName];
-                if (p == nil || [p isKindOfClass:[NSNull class]]) continue;
-                
-                // 获得属性类型
-                NSString *propertyType = p.typeName;
-                
-                // 先判断该类是否实现了该属性
-                if (![model respondsToSelector:NSSelectorFromString(propertyName)]) {
-                    continue;
-                }
-                
-                // 根据不同类型设置
-                if ([p.name isEqualToString:NSStringFromSelector(@selector(pk))]) // 主键
-                {
-                    int pk = [[dic valueForKey:@"pk"] respondsToSelector:@selector(intValue)] ? [[dic valueForKey:@"pk"] intValue] : 0;
-                    [model setValue:[NSNumber numberWithInt:pk] forKey:propertyName];
-                }
-                // int64位类型、int32位类型、int16位类型、int8位类型、int类型、long类型、longlong类型、BOOL类型
-                else if ([propertyType isEqualToString:SYPropertyType_Integer])
-                {
-                    long long type_int64 = [resultSet longLongIntForColumn:propertyName];
-                    [model setValue:[NSNumber numberWithLongLong:type_int64] forKey:propertyName];
-                }
-                else if ([propertyType isEqualToString:SYPropertyType_CGFloat])
-                {
-                    double type_double = [resultSet doubleForColumn:propertyName];
-                    [model setValue:[NSNumber numberWithDouble:type_double] forKey:propertyName];
-                }
-                else { // 其他类型以二进制数据保存
-                    Class class = NSClassFromString(propertyType);
-                    if (class != nil && ![class isKindOfClass:[NSNull class]]) {
-                        id value = [dic objectForKey:propertyName];
-                        
-                        if (![value isKindOfClass:[NSNull class]] && value != nil) {
-                            
-                            // 字符串
-                            if ([class isSubclassOfClass:[NSString class]])
-                            {
-                                [model setValue:value forKey:propertyName];
-                            }
-                            // 数组 || 字典
-                            else if ([class isSubclassOfClass:[NSArray class]] || [class isSubclassOfClass:[NSDictionary class]])
-                            {
-                                NSData *valueData = [value dataUsingEncoding:NSUTF8StringEncoding];
-                                NSError *error = nil;
-                                id objc = [NSJSONSerialization JSONObjectWithData:valueData options:kNilOptions error:&error];
-                                if (error) {
-                                    NSLog(@"反序列化失败");
-                                    continue;
-                                }
-                                [model setValue:objc forKey:propertyName];
-                            }
-                        }
-                    }
-                }
-            }
-            [resultArray addObject:model];
-            // 释放模型
-            FMDBRelease(model);
-        }
-    }];
-    
-    return resultArray.copy;
 }
 
 // FIXME: 删除
@@ -1486,7 +1040,7 @@ static const char *AssociatedKey_MapperDic;
     NSInteger pkValue = [self primaryKeyValue];
     // 如果主键的值小于等于0表示新增的一条数据还未保存到数据库因此没有赋值
     if (pkValue <= 0) {
-        [self add:callback];
+        [self add];
     }else { // 已经有值, 表示该条数据是修改数据库的值
         [self update:callback];
     }

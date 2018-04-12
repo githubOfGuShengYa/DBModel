@@ -34,14 +34,11 @@ typedef NS_ENUM(NSUInteger, STORE_PROPERTY_TYPE) {
 /// 是否可变属性(如果可变,从数据库提取的值应该置为可变状态)
 @property (nonatomic, assign) BOOL isMutable;
 
-/// 属性类型 -- (NSObject对象类型、基础数据类型)__(有值)、(Block类型、结构体类型)__(无值)
-@property (nonatomic, assign) Class type;
+/// OC类型 -- [有值:1. NSObject对象类型]、[无值:1.Block类型、2.结构体类型、3.基础数据类型]
+@property (nonatomic, assign) Class ocType;
 
-/** 类型字符串化 -- T@"NSDictionary"中的NSDictionary、Ti中的i、T?中的Block、T{结构体=}中的结构体名
- *
- *  1.OC对象__可具化展示、2.基础数据类型__可具化展示、3.Block类型__不可具化展示用Block代替、4.结构体__可具化展示名称
- */
-@property (nonatomic, copy) NSString *typeName;
+/// 非OC类型 -- [有值:1.Block类型、2.结构体类型、3.基础数据类型]、[无值:1. NSObject对象类型]
+@property (nonatomic, copy) NSString *notOcType;
 
 /// 属性类型分类: 1.OC对象、2.基础数据类型、3.Block、4.结构体
 @property (nonatomic, assign) STORE_PROPERTY_TYPE classify;

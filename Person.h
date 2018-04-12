@@ -14,9 +14,7 @@
 
 @interface Person : DBModel
 
-- (void)setPrimaryKeyValue:(NSInteger)newValue;
 
-- (NSInteger)primaryKeyValue;
 
 @end
 
@@ -33,7 +31,11 @@
 
 @property (nonatomic, assign) NSInteger dogAge;
 
-@property (nonatomic, copy) NSArray<Associated_Cat> *catList;
+@property (nonatomic, strong) NSNumber *dogNumber;
+
+@property (nonatomic, assign) int64_t number1;
+
+@property (nonatomic, assign) int32_t number2;
 
 @end
 
