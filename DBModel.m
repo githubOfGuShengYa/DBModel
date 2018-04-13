@@ -432,7 +432,28 @@ static const char *AssociatedKey_MapperDic;
 }
 
 #pragma mark- <-----------  数据库操作  ----------->
-- (void)insertWithDatabase:(FMDatabase *)db rollback:(BOOL *)rollback associatedColumnName:(NSString *)columnName
+
+// FIXME: 新增
+/// 增
+- (BOOL)insertWithError:(NSError *__strong*)error {
+    [self.class configPropertyAndTable];
+    
+    // 1. 判断该数据主键ID是否大于0
+    __block BOOL result = YES;
+    if ([self primaryKeyValue] > 0) {
+        *error = [NSError errorWithDomain:@"数据已添加" code:1 userInfo:@{NSLocalizedDescriptionKey: @"数据库中已存在"}];
+        return NO;
+    }
+    
+    // 2. 数据库中进行操作
+    [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
+        result = [self insertWithAssociatedFieldValue:nil database:db rollback:rollback error:error];
+    }];
+    
+    return result;
+}
+
+- (BOOL)insertWithAssociatedFieldValue:(NSString *)fieldValue database:(FMDatabase *)db rollback:(BOOL *)rollback error:(NSError *__strong*)error
 {
     // 1. 遍历当前对象所在类的存储属性列表
     NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
@@ -445,10 +466,10 @@ static const char *AssociatedKey_MapperDic;
     
     // 1.3 上级关联字段配置
     [columnList appendFormat:@"%@,", SQL_COLUMN_NAME_SuperiorKey];
-    if (columnName) // 存在与上级关联
+    if (fieldValue) // 存在与上级关联
     {
         [valueList appendFormat:@"?,"];
-        [values addObject:columnName];
+        [values addObject:fieldValue];
     }
     else
     {
@@ -543,21 +564,37 @@ static const char *AssociatedKey_MapperDic;
             {
                 for (id subValue in value) {
                     if ([subValue isKindOfClass:p.associateClass]) {
-                        [subValue insertWithDatabase:db rollback:rollback associatedColumnName:associatedColumnValue];
+                        BOOL result = [subValue insertWithAssociatedFieldValue:associatedColumnValue database:db rollback:rollback error:error];
+                        if (result == NO) {
+                            return NO;
+                        }
                     }
                 }
             }
             else if ([p.ocType isSubclassOfClass:[NSDictionary class]]) // 嵌套的是个字典
             {
-                
+                if (error) {
+                    *error = [NSError errorWithDomain:@"未开发该服务"
+                                                 code:1
+                                             userInfo:@{NSLocalizedDescriptionKey:@"嵌套类型为字典功能暂未开发完成"}];
+                }
+                return NO;
             }
             else if ([p.ocType isSubclassOfClass:p.associateClass]) // 嵌套的是类
             {
-                [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedColumnValue];
+                BOOL result = [value insertWithAssociatedFieldValue:associatedColumnValue database:db rollback:rollback error:error];
+                if (result == NO) {
+                    return NO;
+                }
             }
             else // 其他
             {
-                
+                if (error) {
+                    *error = [NSError errorWithDomain:@"未开发该服务"
+                                                 code:1
+                                             userInfo:@{NSLocalizedDescriptionKey:@"嵌套类型为其他功能暂未开发完成"}];
+                }
+                return NO;
             }
         }
     }
@@ -565,18 +602,36 @@ static const char *AssociatedKey_MapperDic;
     {
         NSLog(@"[%@]插入数据失败(%@)", NSStringFromClass([self class]), sqlString);
         *rollback = YES;
+        if (error) {
+            *error = [NSError errorWithDomain:@"插入数据失败"
+                                         code:1
+                                     userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"[%@]插入数据失败(%@)", NSStringFromClass([self class]), sqlString]}];
+        }
+        return NO;
     }
+    
+    return YES;
 }
 
-// FIXME: 新增
-/// 增
-- (void)add {
-    [self.class configPropertyAndTable];
 
+
+
+// FIXME: 更改
+/// 改
+- (void)update
+{
+    // 1. 判断主键是否大于0[1.大于0表示该值在数据库中原本存在可以更新、2.不大于0表示该值在数据库中不存在]
+    if ([self primaryKeyValue] <= 0) {
+        NSLog(@"该对象不在数据库中");
+        return;
+    }
+    
+    // 2. 更新数据库数据
     [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
-        [self insertWithDatabase:db rollback:rollback associatedColumnName:nil];
+        [self updateWithDatabase:db rollback:rollback];
     }];
 }
+
 
 - (void)updateWithDatabase:(FMDatabase *)db rollback:(BOOL *)rollback
 {
@@ -675,7 +730,7 @@ static const char *AssociatedKey_MapperDic;
                 
                 
                 // 添加新的内容到数据库中
-                [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedValue_Splice];
+                [value insertWithAssociatedFieldValue:associatedValue_Splice database:db rollback:rollback error:nil];
                 continue;
             }
             
@@ -685,7 +740,7 @@ static const char *AssociatedKey_MapperDic;
                 
                 
                 // 添加新的内容到数据库中
-                [value insertWithDatabase:db rollback:rollback associatedColumnName:associatedValue_Splice];
+                [value insertWithAssociatedFieldValue:associatedValue_Splice database:db rollback:rollback error:nil];
                 continue;
             }
             
@@ -709,118 +764,8 @@ static const char *AssociatedKey_MapperDic;
     }
 }
 
-- (void)update
-{
-    // 1. 判断主键是否大于0[1.大于0表示该值在数据库中原本存在可以更新、2.不大于0表示该值在数据库中不存在]
-    if ([self primaryKeyValue] <= 0) {
-        NSLog(@"该对象不在数据库中");
-        return;
-    }
-    
-    // 2. 更新数据库数据
-    [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
-        [self updateWithDatabase:db rollback:rollback];
-    }];
-}
 
-// FIXME: 更改
-/// 改
-- (void)update:(void(^)(BOOL isSuccess))callback
-{
-    [self.class configPropertyAndTable];
-    
-    // 判断是否不存在
-    id pk = [self valueForKey:@"pk"];
-    if (pk <= 0 || pk == nil) {
-        NSLog(@"该数据未存储在数据库表中, 无法实现更新操作");
-        if (callback) {
-            callback(NO);
-        }
-        return;
-    }
-    
-    NSString *tableName = NSStringFromClass([self class]);
-    NSMutableString *sql_ColumnName = [NSMutableString string]; // 字段名
-    NSMutableArray *columnValueList = [NSMutableArray array];
-    // 取得属性名列表
-    NSDictionary *dic = objc_getAssociatedObject([self class], &AssociatedKey_StorePropertyList);
-    NSArray *propertyNameList = dic.allKeys;
-    // 遍历需保存到数据库的属性列表
-    for (int i = 0; i < propertyNameList.count; i++) {
-        // 取得对应索引的列名
-        NSString *columnName = [propertyNameList objectAtIndex:i];
-        
-        PropertyDescription *p = dic[columnName];
-        
-        // 判断是否是主键, 如果是则跳出并继续循环
-        if ([columnName isEqualToString:@"pk"]) {
-            continue;
-        }
-        
-        // 取得当前对象对应属性名的值
-        id value = [self valueForKey:columnName];
-        // 判断该值是否存在
-        if (value == nil) {
-            [sql_ColumnName appendFormat:@"%@=null,", p.name];
-        }
-        else {
-            [sql_ColumnName appendFormat:@"%@=?,", p.name];
-            
-            // 字符串
-//            if ([p.type isSubclassOfClass:[NSString class]])
-//            {
-//                // 把值添加的数组中
-//                [columnValueList addObject:value];
-//            }
-//            else if ([p.type isSubclassOfClass:[NSArray class]] || [p.type isSubclassOfClass:[NSDictionary class]])
-//            {
-//                NSError *error = nil;
-//                NSData *data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingPrettyPrinted error:&error];
-//                if (!error) {
-//                    NSString *jsonStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-//                    [columnValueList addObject:jsonStr];
-//                }else {
-//                    [columnValueList addObject:value];
-//                }
-//            }
-//            else
-//            {
-//                // 把值添加的数组中
-//                [columnValueList addObject:value];
-//            }
-        }
-    }
-    
-    // 清除最后一个逗号
-    if (sql_ColumnName.length > 0) {
-        [sql_ColumnName deleteCharactersInRange:NSMakeRange(sql_ColumnName.length - 1, 1)];
-    }
-    
-    // SQL语句
-    NSString *sqlString = [NSString stringWithFormat:@"UPDATE %@ SET %@ WHERE pk = %@;", tableName, sql_ColumnName, [self valueForKey:@"pk"]];
-    NSLog(@"数据库表(%@)更新SQL语句:(%@)", tableName, sqlString);
-    // 获取管理者单例
-    DBManager *manager = [DBManager manager];
-    // 使用数据库队列执行保存操作
-    [manager.databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
-        // 使用数据库事务执行SQL语句
-        BOOL isSuccess = [db executeUpdate:sqlString withArgumentsInArray:columnValueList];
 
-        if (isSuccess) {
-            NSLog(@"更新数据成功");
-            if (callback) {
-                callback(YES);
-            }
-        }else {
-            // 事务回滚, 并结束执行代码
-            *rollback = YES;
-            if (callback) {
-                callback(NO);
-            }
-            return;
-        }
-    }];
-}
 
 // FIXME: 查询
 /// 查
@@ -1040,14 +985,151 @@ static const char *AssociatedKey_MapperDic;
     NSInteger pkValue = [self primaryKeyValue];
     // 如果主键的值小于等于0表示新增的一条数据还未保存到数据库因此没有赋值
     if (pkValue <= 0) {
-        [self add];
+//        [self add];
     }else { // 已经有值, 表示该条数据是修改数据库的值
-        [self update:callback];
+        
     }
 }
 
+- (BOOL)removeWithError:(NSError *__strong*)error
+{
+    // 1. 判断数据库中是否存在该条数据
+    if ([self primaryKeyValue] <= 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"数据库中不存在该条数据" code:1 userInfo:@{NSLocalizedDescriptionKey: @"数据库中不存在该条数据"}];
+        }
+        return NO;
+    }
+    
+    __block BOOL result = YES;
+    // 2. 数据库队列调起事务来处理删除操作
+    [[DBManager manager].databaseQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
+        result = [self removeNestWithError:error database:db rollback:rollback];
+    }];
+    
+    return result;
+}
 
+- (BOOL)removeNestWithError:(NSError *__strong*)error database:(FMDatabase *)db rollback:(BOOL * _Nonnull)rollback
+{
+    // 1. 主键是否大于0
+    if ([self primaryKeyValue] <= 0) // 数据库中不存在该条数据,因此无法完成删除操作
+    {
+        if (error) {
+            *error = [NSError errorWithDomain:@"数据库中不存在该条数据" code:1 userInfo:@{NSLocalizedDescriptionKey: @"数据库中不存在该条数据"}];
+        }
+        *rollback = YES;
+        return NO;
+    }
+    
+    // 2. 删除嵌套内容
+    NSDictionary *nestDic = objc_getAssociatedObject([self class], &AssociatedKey_NestPropertyList);
 
+    for (NSString *key in nestDic.allKeys)
+    {
+        // 2.1 取得属性信息对象
+        PropertyDescription *p = nestDic[key];
+        
+        // 2.2 嵌套的值
+        id value = [self valueForKey:p.name];
+        if (value == nil || [value isKindOfClass:[NSNull class]]) // 此时该属性值为空, 搜索库中该数据
+        {
+            // 2.2.1 拼接的关联值
+            NSString *columnValue = [NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(self.class), p.name, [self primaryKeyValue]];
+            
+            // 2.2.2 在嵌套下级表中搜索指定关联值的内容
+            NSArray *array = [[value class] searchBySqlString:[NSString stringWithFormat:@"where %@ = '%@';", SQL_COLUMN_NAME_SuperiorKey, columnValue] inDatabase:db];
+        
+            if (![self removeAllDataFromArray:array error:error database:db rollback:rollback]) return NO;
+            
+            continue;
+        }
+        
+        // 2.3 判断嵌套类型
+        if ([p.associateClass isSubclassOfClass:[p.ocType class]]) // 直接嵌套
+        {
+            if (![value removeAppointNestWithError:error database:db rollback:rollback]) return NO;
+        }
+        else if ([p.associateClass isSubclassOfClass:[NSArray class]]) // 以数组形式嵌套
+        {
+            // 遍历数组中对象按顺序移除
+            if (![self removeAllDataFromArray:value error:error database:db rollback:rollback]) return NO;
+            
+            // 将关联字段数据也依次移除
+            NSString *columnValue = [NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(self.class), p.name, [self primaryKeyValue]];
+            
+            // 在嵌套下级表中搜索指定关联值的内容
+            NSArray *array = [[value class] searchBySqlString:[NSString stringWithFormat:@"where %@ = '%@';", SQL_COLUMN_NAME_SuperiorKey, columnValue] inDatabase:db];
+            
+            // 当数据库中没有对应值时需要进行移除操作
+            if (![self removeAllDataFromArray:array error:error database:db rollback:rollback]) return NO;
+        }
+        else if ([p.associateClass isSubclassOfClass:[NSDictionary class]]) // 以字典形式嵌套
+        {
+            
+        }
+        else // 其他
+        {
+            
+        }
+    }
+    
+    // 3. 移除非嵌套内容
+    NSString *sql = [NSString stringWithFormat:@"delete from %@ where %@ = %ld;", NSStringFromClass(self.class), SQL_COLUMN_NAME_PrimaryKey, [self primaryKeyValue]];
+    BOOL isSuccess = [db executeUpdate:sql];
+    if (isSuccess == NO) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"移除失败" code:1 userInfo:@{NSLocalizedDescriptionKey: @"移除非嵌套部分失败"}];
+        }
+        *rollback = YES;
+        return NO;
+    }
+    
+    return YES;
+}
+
+// 移除数组中的数据
+- (BOOL)removeAllDataFromArray:(NSArray *)array error:(NSError *__strong*)error database:(FMDatabase *)db rollback:(BOOL * _Nonnull)rollback
+{
+    // 1. 判断数组是否为空
+    if (array == nil || [array isKindOfClass:[NSNull class]]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"数组为空" code:1 userInfo:@{NSLocalizedDescriptionKey: @"数组为空"}];
+        }
+        *rollback = YES;
+        return NO;
+    }
+    
+    if (![array isKindOfClass:[NSArray class]]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"传入类型错误" code:1 userInfo:@{NSLocalizedDescriptionKey: @"传入类型错误"}];
+        }
+        *rollback = YES;
+        return NO;
+    }
+    
+    // 2. 移除数组中所有元素
+    BOOL result = YES;
+    for (id subValue in array) {
+        if (![subValue removeAppointNestWithError:error database:db rollback:rollback]) return NO;
+    }
+    
+    return result;
+}
+
+// 移除指定嵌套对象并监听是否成功
+- (BOOL)removeAppointNestWithError:(NSError *__strong*)error database:(FMDatabase *)db rollback:(BOOL * _Nonnull)rollback
+{
+    // 调起移除指令
+    BOOL result = [self removeNestWithError:error database:db rollback:rollback];
+    
+    if (result == NO) {
+        *rollback = YES;
+        return NO;
+    }
+    
+    return YES;
+}
 
 /// 批量移除
 + (void)deleteObjects:(NSArray<DBModel *>*)objs successfulHandle:(void(^)(DBModel *successfulModel))successful failedHandle:(void(^)(DBModel *failedModel))failed afterAllSuccess:(void(^)(void))allSuccess

@@ -21,7 +21,8 @@
 
 
 /// 增
-- (void)add;
+//- (void)add;
+- (BOOL)insertWithError:(NSError *__strong*)error;
 /// 改
 //- (void)update:(void(^)(BOOL isSuccess))callback;
 - (void)update;
@@ -29,13 +30,14 @@
 + (NSArray *)findByCondition:(NSString *)condition;
 
 /// 删
-+ (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback;
+//+ (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback;
 
 /// 保存--集合新增与修改于一体
 - (void)save:(void(^)(BOOL isSuccess))callback;
 
 /// 单个删除
-- (void)remove:(void(^)(BOOL isSuccess))callback;
+//- (void)remove:(void(^)(BOOL isSuccess))callback;
+- (BOOL)removeWithError:(NSError *__strong*)error;
 
 /// 通过主键值来查询数据
 + (instancetype)findByPk:(int)pkValue;

@@ -20,6 +20,7 @@
     [super viewDidLoad];
     
     
+    
     Cat *cat = [[Cat alloc] init];
     cat.catAge = 11;
     cat.catName = @"xiaomao";
@@ -39,27 +40,21 @@
     dog.number1 = 111;
     dog.number2 = 222;
 
-        [dog save:^(BOOL isSuccess) {
-            NSLog(@"保存成功");
-        }];
+    NSError *error = nil;
+//    BOOL result = [dog insertWithError:&error];
+    
+    
+    
+    NSArray *array1 = [Dog findByCondition:@""];
+    BOOL result = [array1.firstObject removeWithError:&error];
+    if (result) {
+        
+    }
+}
 
-    
-    
-//    [Dog searchBySqlString:@"" result:^(NSArray *result) {
-//        for (Dog *value in result)
-//        {
-//            value.dogName = @"我的小狗";
-//            value.cat.catName = @"我的小猫";
-//            [value update];
-//        }
-//    }];
-    NSArray *arr = [Dog findByCondition:@""];
-//    for (Dog *value in arr)
-//    {
-//        value.dogName = @"我的小狗";
-//        value.cat.catName = @"我的小猫";
-//        [value update];
-//    }
+- (void)error:(NSError *)error
+{
+    error = [NSError errorWithDomain:@"ddjjjdjj" code:1 userInfo:nil];
 }
 
 
