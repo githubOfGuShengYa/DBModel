@@ -10,7 +10,10 @@
 
 @implementation Person
 
-
++ (JSONKeyMapper *)keyMapper
+{
+    return [[JSONKeyMapper alloc] initWithModelToJSONDictionary:@{@"age": @"myAge"}];
+}
 
 @end
 

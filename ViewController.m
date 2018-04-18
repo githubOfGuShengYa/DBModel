@@ -19,6 +19,8 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
+    Person *p = [[Person alloc] initWithDictionary:@{@"name":@"gu", @"myAge": @34} error:nil];
+    
     
     
     Cat *cat = [[Cat alloc] init];
@@ -37,6 +39,7 @@
     dog.dogAge = 21;
     dog.dogName = @"猫子";
     dog.cat = cat;
+    dog.catList = array.copy;
     dog.number1 = 111;
     dog.number2 = 222;
 

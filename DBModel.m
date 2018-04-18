@@ -239,24 +239,36 @@ static const char *AssociatedKey_MapperDic;
         {
             // 截取类型字符串 -- 1. T@"NSString"样式  2. T@"NSString<协议名>"样式
             [scanner scanUpToCharactersFromSet:[NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&propertyType];
-            // 赋值属性类型 -- 如果是自定义的类型, 则此处取不到类型
-            p.ocType = NSClassFromString(propertyType);
-            // 是否可变
-            p.isMutable = ([propertyType rangeOfString:@"Mutable"].location != NSNotFound);
             
-            // 属于字符串
-            if ([p.ocType isSubclassOfClass:[NSString class]]) // 字符串系可直接保存为TEXT格式
-            {
-                p.sqlTypeName = @"TEXT";
-            }
-            else if ([p.ocType isSubclassOfClass:[NSNumber class]]) // NSNumber类型可保存为浮点型
-            {
-                p.sqlTypeName = @"REAL";
-            }
-            else // 其余ObjectC类型保存为二进制格式
+            if ([propertyType isEqualToString:@""]) // id类型且遵守了某些协议
             {
                 p.sqlTypeName = @"BLOB";
+                p.notOcType = @"id";
+                p.classify = STORE_PROPERTY_TYPE_ID;
             }
+            else // OC类型
+            {
+                p.classify = STORE_PROPERTY_TYPE_OBJECT;
+                // 赋值属性类型 -- 如果是自定义的类型, 则此处取不到类型
+                p.ocType = NSClassFromString(propertyType);
+                // 是否可变
+                p.isMutable = ([propertyType rangeOfString:@"Mutable"].location != NSNotFound);
+                
+                // 属于字符串
+                if ([p.ocType isSubclassOfClass:[NSString class]]) // 字符串系可直接保存为TEXT格式
+                {
+                    p.sqlTypeName = @"TEXT";
+                }
+                else if ([p.ocType isSubclassOfClass:[NSNumber class]]) // NSNumber类型可保存为浮点型
+                {
+                    p.sqlTypeName = @"REAL";
+                }
+                else // 其余ObjectC类型保存为二进制格式
+                {
+                    p.sqlTypeName = @"BLOB";
+                }
+            }
+            
             
             // 遵循的协议
             NSString *protocolName = nil;
@@ -287,9 +299,6 @@ static const char *AssociatedKey_MapperDic;
                 // 以>字符作为协议名结束点, 使用scanString让扫描索引移动到>位置
                 [scanner scanString:@">" intoString:nil];
             }
-            
-            // OC对象分类
-            p.classify = STORE_PROPERTY_TYPE_OBJECT;
         }
         else if ([scanner scanString:@"@?" intoString:nil]) // Block
         {
@@ -297,6 +306,12 @@ static const char *AssociatedKey_MapperDic;
             // Block分类
             p.classify = STORE_PROPERTY_TYPE_BLOCK;
             p.isIgnore = YES; // Block自动划入忽略项
+        }
+        else if ([scanner scanString:@"@" intoString:nil]) // id类型(表指针) 此时属性没有遵守任何协议格式为:T@,
+        {
+            p.sqlTypeName = @"BLOB";
+            p.notOcType = @"id";
+            p.classify = STORE_PROPERTY_TYPE_ID;
         }
         else if ([scanner scanString:@"{" intoString:&propertyType]) // 结构体
         {
@@ -1263,6 +1278,11 @@ static const char *AssociatedKey_MapperDic;
 //}
 
 
+
+/**
+ static void start(void) __attribute__ ((constructor)); // 构造函数、表示在main()函数执行之前执行
+ static void stop(void) __attribute__ ((destructor)); // 析构函数、表示在mian()函数退出时执行
+ */
 __attribute__((constructor)) static void _append_default_implement_method_to_class1() {
     unsigned classCount;
     

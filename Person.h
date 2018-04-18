@@ -12,9 +12,11 @@
 
 #import "TempClass.h"
 
-@interface Person : DBModel
+@interface Person : JSONModel
 
+@property (nonatomic, copy) NSString *name;
 
+@property (nonatomic, assign) int age;
 
 @end
 
@@ -25,7 +27,11 @@
 @end
 @interface Dog : NSObject<DBModelProtocol>
 
+@property (nonatomic, assign) id<Associated_Cat> value;
+
 @property (nonatomic, strong) Cat<Associated_Cat> *cat;
+
+@property (nonatomic, strong) NSArray<Associated_Cat> *catList;
 
 @property (nonatomic, copy) NSString *dogName;
 
@@ -45,6 +51,8 @@
 @property (nonatomic, assign) NSInteger catAge;
 
 @property (nonatomic, copy) NSString *catName;
+
+
 
 @end
 

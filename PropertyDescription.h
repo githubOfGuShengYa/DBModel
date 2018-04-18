@@ -18,6 +18,8 @@ typedef NS_ENUM(NSUInteger, STORE_PROPERTY_TYPE) {
     STORE_PROPERTY_TYPE_BLOCK,
     /// 4.结构体
     STORE_PROPERTY_TYPE_STUCT,
+    /// 5.id类型
+    STORE_PROPERTY_TYPE_ID,
 };
 
 @interface PropertyDescription : NSObject
