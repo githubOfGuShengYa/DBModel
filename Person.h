@@ -27,7 +27,7 @@
 @end
 @interface Dog : NSObject<DBModelProtocol>
 
-@property (nonatomic, assign) id<Associated_Cat> value;
+//@property (nonatomic, assign) id<Associated_Cat> value;
 
 @property (nonatomic, strong) Cat<Associated_Cat> *cat;
 

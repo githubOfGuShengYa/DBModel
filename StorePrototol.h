@@ -21,31 +21,18 @@
 
 
 /// 增
-//- (void)add;
-- (BOOL)insertWithError:(NSError *__strong*)error;
+- (BOOL)insertWithError:(NSError *__autoreleasing*)error;
+
 /// 改
-//- (void)update:(void(^)(BOOL isSuccess))callback;
-- (void)update;
+- (BOOL)updateWithError:(NSError *__autoreleasing*)error;
+
 /// 查
-+ (NSArray *)findByCondition:(NSString *)condition;
++ (NSArray *)findAllWithError:(NSError **)error;
+
++ (NSArray *)findByCondition:(NSString *)condition error:(NSError * __autoreleasing *)error;
 
 /// 删
-//+ (void)removeByCondition:(NSString *)condition callback:(void(^)(BOOL isSuccess))callback;
-
-/// 保存--集合新增与修改于一体
-- (void)save:(void(^)(BOOL isSuccess))callback;
-
-/// 单个删除
-//- (void)remove:(void(^)(BOOL isSuccess))callback;
-- (BOOL)removeWithError:(NSError *__strong*)error;
-
-/// 通过主键值来查询数据
-+ (instancetype)findByPk:(int)pkValue;
-
-/// 查询表中所有数据
-+ (NSArray *)findAll;
-
-/// 清空表
-+ (void)clear:(void(^)(BOOL isSuccess))callback;
++ (BOOL)removeWithCondition:(NSString *)condition andError:(NSError *__autoreleasing*)error;
+- (BOOL)removeWithError:(NSError *__autoreleasing*)error;
 
 @end

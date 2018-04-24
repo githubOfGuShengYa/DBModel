@@ -19,19 +19,20 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    Person *p = [[Person alloc] initWithDictionary:@{@"name":@"gu", @"myAge": @34} error:nil];
+//    Person *p = [[Person alloc] initWithDictionary:@{@"name":@"gu", @"myAge": @34} error:nil];
     
     
     
     Cat *cat = [[Cat alloc] init];
     cat.catAge = 11;
-    cat.catName = @"xiaomao";
+    cat.catName = @"直接嵌套的猫";
     
     NSMutableArray *array = [NSMutableArray array];
     for (int i = 0; i < 7; i++) {
         Cat *cat = [[Cat alloc] init];
         cat.catAge = i + 10;
-        cat.catName = [NSString stringWithFormat:@"小猫:[%02d]", i + 1];
+        NSDate *date = [NSDate date];
+        cat.catName = @"嵌套数组的猫";
         [array addObject:cat];
     }
     
@@ -47,24 +48,27 @@
 //    BOOL result = [dog insertWithError:&error];
     
     
+//    [Dog removeWithCondition:@"" andError:&error];
+    NSArray *array1 = [Dog findByCondition:nil error:&error];
     
-    NSArray *array1 = [Dog findByCondition:@""];
-    BOOL result = [array1.firstObject removeWithError:&error];
-    if (result) {
-        
+    for (Dog *d in array1) {
+
+        d.dogAge = 001;
+        d.dogName = @"疯猫";
+        d.cat = cat;
+        d.catList = array.copy;
+        d.number1 = 1;
+        d.number2 = 2;
+        [d updateWithError:&error];
     }
+    
+    array1 = [Dog findByCondition:nil error:&error];
+//    result = [array1.firstObject removeWithError:&error];
+//    if (result) {
+//
+//    }
 }
 
-- (void)error:(NSError *)error
-{
-    error = [NSError errorWithDomain:@"ddjjjdjj" code:1 userInfo:nil];
-}
-
-
-- (void)didReceiveMemoryWarning {
-    [super didReceiveMemoryWarning];
-    // Dispose of any resources that can be recreated.
-}
 
 
 @end
