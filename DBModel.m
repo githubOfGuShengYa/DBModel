@@ -1068,7 +1068,9 @@ static const char *AssociatedKey_MapperDic;
         
         // 2.2 嵌套的值
         id value = [self valueForKey:p.name];
-        if (value == nil || [value isKindOfClass:[NSNull class]]) // 此时该属性值为空, 搜索库中该数据
+        
+        // 此时该属性值为空, 搜索库中该数据然后移除
+        if (value == nil || [value isKindOfClass:[NSNull class]])
         {
             // 2.2.1 拼接的关联值
             NSString *columnValue = [NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(self.class), p.name, [self primaryKeyValue]];
@@ -1086,19 +1088,10 @@ static const char *AssociatedKey_MapperDic;
         {
             if (![value removeNestWithError:error database:db rollback:rollback]) return NO;
         }
-        else if ([p.associateClass isSubclassOfClass:[NSArray class]]) // 以数组形式嵌套
+        else if ([p.ocType isSubclassOfClass:[NSArray class]]) // 以数组形式嵌套
         {
             // 遍历数组中对象按顺序移除
             if (![self removeAllDataFromArray:value error:error database:db rollback:rollback]) return NO;
-            
-            // 将关联字段数据也依次移除
-            NSString *columnValue = [NSString stringWithFormat:@"%@_%@_%ld", NSStringFromClass(self.class), p.name, [self primaryKeyValue]];
-            
-            // 在嵌套下级表中搜索指定关联值的内容
-            NSArray *array = [[value class] searchBySqlString:[NSString stringWithFormat:@"where %@ = '%@';", SQL_COLUMN_NAME_SuperiorKey, columnValue] inDatabase:db error:error];
-            
-            // 当数据库中没有对应值时需要进行移除操作
-            if (![self removeAllDataFromArray:array error:error database:db rollback:rollback]) return NO;
         }
         else // 其他
         {
@@ -1138,7 +1131,7 @@ static const char *AssociatedKey_MapperDic;
     
     if (![array isKindOfClass:[NSArray class]]) {
         if (error) {
-            *error = [NSError errorWithDomain:GZStoreRemoveError code:GZStoreErrorTypeUnMatchBetweenObjAndProperty userInfo:@{NSLocalizedDescriptionKey: @"传入类型错误不是数组类型"}];
+            *error = [NSError errorWithDomain:GZStoreRemoveError code:GZStoreErrorTypeUnMatchBetweenObjAndProperty userInfo:@{NSLocalizedDescriptionKey: @"所要移除的value类型错误不是数组类型"}];
         }
         *rollback = YES;
         return NO;
@@ -1147,6 +1140,7 @@ static const char *AssociatedKey_MapperDic;
     // 2. 移除数组中所有元素
     BOOL result = YES;
     for (id subValue in array) {
+        // 移除数组数组中直接关联的可嵌套对象
         if (![subValue removeNestWithError:error database:db rollback:rollback]) return NO;
     }
     

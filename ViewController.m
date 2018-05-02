@@ -24,49 +24,51 @@
     
     
     Cat *cat = [[Cat alloc] init];
-    cat.catAge = 11;
-    cat.catName = @"直接嵌套的猫";
+    cat.catInteger = 11;
+    cat.catString = @"直接嵌套";
     
     NSMutableArray *array = [NSMutableArray array];
     for (int i = 0; i < 7; i++) {
         Cat *cat = [[Cat alloc] init];
-        cat.catAge = i + 10;
-        NSDate *date = [NSDate date];
-        cat.catName = @"嵌套数组的猫";
+        cat.catInteger = i + 10;
+        cat.catString = [NSString stringWithFormat:@"数组嵌套[%d]", i];
         [array addObject:cat];
     }
     
     Dog *dog = [[Dog alloc] init];
-    dog.dogAge = 21;
-    dog.dogName = @"猫子";
+    dog.dogInt = 22;
+    dog.dogInteger = 11;
     dog.cat = cat;
     dog.catList = array.copy;
-    dog.number1 = 111;
-    dog.number2 = 222;
+    dog.dogNumber = @33;
+    dog.dogString = @"嵌套父类";
+    dog.dogCGFloat = 1.23;
 
     NSError *error = nil;
-//    BOOL result = [dog insertWithError:&error];
+    BOOL result = YES;
     
+    // 增
+//    result = [dog insertWithError:&error];
     
-//    [Dog removeWithCondition:@"" andError:&error];
-    NSArray *array1 = [Dog findByCondition:nil error:&error];
-    
-    for (Dog *d in array1) {
+    // 查
+    NSArray *list = [Dog findAllWithError:&error];
+    for (Dog *d in list) {
+        // 改
+//        result = [d updateWithError:&error];
 
-        d.dogAge = 001;
-        d.dogName = @"疯猫";
-        d.cat = cat;
-        d.catList = array.copy;
-        d.number1 = 1;
-        d.number2 = 2;
-        [d updateWithError:&error];
+        // 删
+        result = [d removeWithError:&error];
     }
-    
-    array1 = [Dog findByCondition:nil error:&error];
-//    result = [array1.firstObject removeWithError:&error];
-//    if (result) {
 //
-//    }
+//    // 改
+//    result = [dog updateWithError:&error];
+//
+//    // 删
+//    result = [dog removeWithError:&error];
+    
+    if (result) {
+        
+    }
 }
 
 

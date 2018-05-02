@@ -27,30 +27,28 @@
 @end
 @interface Dog : NSObject<DBModelProtocol>
 
-//@property (nonatomic, assign) id<Associated_Cat> value;
-
 @property (nonatomic, strong) Cat<Associated_Cat> *cat;
 
 @property (nonatomic, strong) NSArray<Associated_Cat> *catList;
 
-@property (nonatomic, copy) NSString *dogName;
+@property (nonatomic, copy) NSString *dogString;
 
-@property (nonatomic, assign) NSInteger dogAge;
+@property (nonatomic, assign) NSInteger dogInteger;
 
 @property (nonatomic, strong) NSNumber *dogNumber;
 
-@property (nonatomic, assign) int64_t number1;
+@property (nonatomic, assign) int dogInt;
 
-@property (nonatomic, assign) int32_t number2;
+@property (nonatomic, assign) CGFloat dogCGFloat;
 
 @end
 
 
 @interface Cat : NSObject<DBModelProtocol>
 
-@property (nonatomic, assign) NSInteger catAge;
+@property (nonatomic, assign) NSInteger catInteger;
 
-@property (nonatomic, copy) NSString *catName;
+@property (nonatomic, copy) NSString *catString;
 
 
 
